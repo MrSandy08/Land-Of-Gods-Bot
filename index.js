@@ -9,6 +9,7 @@ const {
 const { Boom } = require('@hapi/boom');
 const P = require('pino');
 const qrcode = require('qrcode-terminal');
+const http = require('http');
 const connectDB = require('./src/database');
 const User = require('./src/models/User');
 const Config = require('./src/models/Config');
@@ -35,6 +36,12 @@ const dailyJob = async (sock) => {
 async function startBot() {
   await connectDB();
   
+  // Servidor HTTP para evitar error 503 en Hugging Face
+  http.createServer((req, res) => {
+    res.write("Bot en línea ✅");
+    res.end();
+  }).listen(7860);
+
   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
   const { version } = await fetchLatestBaileysVersion();
 
