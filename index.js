@@ -33,12 +33,16 @@ const dailyJob = async (sock) => {
   }
 };
 
+// Variable para guardar el código de vinculación
+let pairingCode = "Esperando código...";
+
 async function startBot() {
   await connectDB();
   
-  // Servidor HTTP para evitar error 503 en Hugging Face
+  // Servidor HTTP para mostrar el código en la web de HF
   http.createServer((req, res) => {
-    res.write("Bot en línea ✅");
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.write(`SUA-Bot en línea ✅\n\nCódigo de vinculación: ${pairingCode}`);
     res.end();
   }).listen(7860);
 
@@ -48,12 +52,35 @@ async function startBot() {
   const sock = makeWASocket({
     version,
     logger: P({ level: 'silent' }),
-    printQRInTerminal: true,
+    printQRInTerminal: false, // Desactivamos QR
     auth: state,
+    browser: ["Ubuntu", "Chrome", "20.0.04"], // Necesario para Pairing Code
     getMessage: async (key) => {
       return { conversation: 'sua-bot' };
     }
   });
+
+  // Lógica para solicitar Pairing Code si no hay sesión
+  if (!sock.authState.creds.registered) {
+    const phoneNumber = process.env.PHONE_NUMBER; // Se debe configurar en las variables de HF
+    if (phoneNumber) {
+      setTimeout(async () => {
+        try {
+          let code = await sock.requestPairingCode(phoneNumber);
+          pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
+          console.log(`CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+        } catch (err) {
+          console.error("Error solicitando pairing code:", err);
+          pairingCode = "Error al generar código. Verifica el número de teléfono.";
+        }
+      }, 3000);
+    } else {
+      pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
+      console.log(pairingCode);
+    }
+  } else {
+    pairingCode = "Bot ya está vinculado ✅";
+  }
 
   // Programar job diario (cada 24h)
   setInterval(() => dailyJob(sock), 24 * 60 * 60 * 1000);
