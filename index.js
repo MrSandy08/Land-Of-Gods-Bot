@@ -37,14 +37,21 @@ const dailyJob = async (sock) => {
 let pairingCode = "Esperando código...";
 
 async function startBot() {
-  await connectDB();
-  
-  // Servidor HTTP para mostrar el código en la web de HF
+  // Iniciar servidor HTTP inmediatamente para evitar error 503 en Hugging Face
   http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.write(`SUA-Bot en línea ✅\n\nCódigo de vinculación: ${pairingCode}`);
     res.end();
-  }).listen(7860);
+  }).listen(7860, () => {
+    console.log('Servidor HTTP escuchando en el puerto 7860');
+  });
+
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error('Error al conectar a la base de datos:', err);
+    pairingCode = "Error de base de datos. Revisa MONGO_URI.";
+  }
 
   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
   const { version } = await fetchLatestBaileysVersion();
