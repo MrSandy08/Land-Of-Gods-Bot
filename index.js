@@ -72,44 +72,43 @@ async function startBot() {
     }
   });
 
-  // Lógica para solicitar Pairing Code si no hay sesión
-  if (!sock.authState.creds.registered) {
-    const phoneNumber = process.env.PHONE_NUMBER; // Se debe configurar en las variables de HF
-    if (phoneNumber) {
-      setTimeout(async () => {
-        try {
-          let code = await sock.requestPairingCode(phoneNumber);
-          pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
-          console.log(`CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
-        } catch (err) {
-          console.error("Error solicitando pairing code:", err);
-          pairingCode = "Error al generar código. Verifica el número de teléfono.";
-        }
-      }, 3000);
-    } else {
-      pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
-      console.log(pairingCode);
-    }
-  } else {
-    pairingCode = "Bot ya está vinculado ✅";
-  }
-
   // Programar job diario (cada 24h)
   setInterval(() => dailyJob(sock), 24 * 60 * 60 * 1000);
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
     if (qr) qrcode.generate(qr, { small: true });
     
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error instanceof Boom) ? 
+      const shouldReconnect = (lastDisconnect?.error instanceof Boom) ? 
         lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut : true;
       console.log('Conexión cerrada. ¿Reconectando?', shouldReconnect);
-      if (shouldReconnect) startBot();
+      if (shouldReconnect) {
+        setTimeout(() => startBot(), 2000);
+      }
     } else if (connection === 'open') {
       console.log('Bot conectado correctamente');
+      pairingCode = "Bot ya está vinculado ✅";
+      
+      // Lógica para solicitar Pairing Code si no hay sesión
+      if (!sock.authState.creds.registered) {
+        const phoneNumber = process.env.PHONE_NUMBER;
+        if (phoneNumber) {
+          try {
+            let code = await sock.requestPairingCode(phoneNumber);
+            pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
+            console.log(`CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+          } catch (err) {
+            console.error("Error solicitando pairing code:", err);
+            pairingCode = "Error al generar código. Verifica el número de teléfono.";
+          }
+        } else {
+          pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
+          console.log(pairingCode);
+        }
+      }
     }
   });
 
