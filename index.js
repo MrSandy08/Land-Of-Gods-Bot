@@ -24,6 +24,8 @@ const spamState = new Map();
 // Variable para guardar el código de vinculación
 let pairingCode = "Esperando código...";
 let isPairingInProgress = false;
+let consecutive401Errors = 0;
+const MAX_401_ERRORS = 2;
 
 // Servidor Express ultra ligero para hosting (Render, Railway, etc.)
 // Se inicia ANTES de cualquier otra cosa para evitar SIGTERM
@@ -93,13 +95,23 @@ async function startBot() {
       
       if (statusCode === 403) {
         shouldReconnect = false;
+        consecutive401Errors = 0;
         console.log('No se reconectará: cierre de sesión intencional (403)');
-      } else if (statusCode === 401 && !isPairingInProgress) {
-        console.log('Error 401 detectado: borramos credenciales antiguas y reiniciamos...');
-        clearOldCreds = true;
-      } else if (isPairingInProgress) {
-        console.log('Vinculación en progreso: no borramos credenciales');
+      } else if (statusCode === 401) {
+        if (isPairingInProgress) {
+          console.log('Vinculación en progreso: no borramos credenciales');
+        } else {
+          consecutive401Errors++;
+          console.log(`Error 401 detectado (${consecutive401Errors}/${MAX_401_ERRORS})`);
+          
+          if (consecutive401Errors >= MAX_401_ERRORS) {
+            console.log('Máximos intentos de 401 alcanzados: borramos credenciales corruptas y reiniciamos...');
+            clearOldCreds = true;
+            consecutive401Errors = 0;
+          }
+        }
       } else {
+        consecutive401Errors = 0;
         console.log('Intentando reconectar en 2 segundos... (Código de error:', statusCode, ')');
       }
       
@@ -112,6 +124,7 @@ async function startBot() {
     } else if (connection === 'open') {
       console.log('✅ Bot conectado correctamente');
       isPairingInProgress = false;
+      consecutive401Errors = 0;
       pairingCode = "Bot ya está vinculado ✅";
       
       // Lógica para solicitar Pairing Code si no hay sesión
