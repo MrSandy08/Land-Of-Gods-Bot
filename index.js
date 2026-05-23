@@ -9,7 +9,7 @@ const {
 const { Boom } = require('@hapi/boom');
 const P = require('pino');
 const qrcode = require('qrcode-terminal');
-const http = require('http');
+const express = require('express');
 const connectDB = require('./src/database');
 const User = require('./src/models/User');
 const Config = require('./src/models/Config');
@@ -37,13 +37,16 @@ const dailyJob = async (sock) => {
 let pairingCode = "Esperando código...";
 
 async function startBot() {
-  // Iniciar servidor HTTP inmediatamente para evitar error 503 en Hugging Face
-  http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.write(`SUA-Bot en línea ✅\n\nCódigo de vinculación: ${pairingCode}`);
-    res.end();
-  }).listen(7860, () => {
-    console.log('Servidor HTTP escuchando en el puerto 7860');
+  // Iniciar servidor Express inmediatamente para hosting (Render, Railway, etc.)
+  const app = express();
+  const PORT = process.env.PORT || 7860;
+  
+  app.get('/', (req, res) => {
+    res.send(`Mini-Beyonder está vivo 🚀\n\nCódigo de vinculación: ${pairingCode}`);
+  });
+  
+  app.listen(PORT, () => {
+    console.log(`Servidor web escuchando en el puerto ${PORT}`);
   });
 
   try {
