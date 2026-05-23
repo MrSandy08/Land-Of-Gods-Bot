@@ -21,6 +21,22 @@ const fmt = require('./format');
 // Anti-spam state
 const spamState = new Map();
 
+// Variable para guardar el código de vinculación
+let pairingCode = "Esperando código...";
+
+// Servidor Express ultra ligero para hosting (Render, Railway, etc.)
+// Se inicia ANTES de cualquier otra cosa para evitar SIGTERM
+const app = express();
+const PORT = process.env.PORT || 7860;
+
+app.get('/', (req, res) => {
+  res.send(`Mini-Beyonder está en línea y procesando el multiverso 🌌\n\nCódigo de vinculación: ${pairingCode}`);
+});
+
+app.listen(PORT, () => {
+  console.log(`[SERVER] Puerto web activado correctamente en el puerto ${PORT}`);
+});
+
 // Función para procesar excusas diariamente
 const dailyJob = async (sock) => {
   console.log('Ejecutando job diario...');
@@ -33,21 +49,7 @@ const dailyJob = async (sock) => {
   }
 };
 
-// Variable para guardar el código de vinculación
-let pairingCode = "Esperando código...";
-
 async function startBot() {
-  // Iniciar servidor Express inmediatamente para hosting (Render, Railway, etc.)
-  const app = express();
-  const PORT = process.env.PORT || 7860;
-  
-  app.get('/', (req, res) => {
-    res.send(`Mini-Beyonder está vivo 🚀\n\nCódigo de vinculación: ${pairingCode}`);
-  });
-  
-  app.listen(PORT, () => {
-    console.log(`Servidor web escuchando en el puerto ${PORT}`);
-  });
 
   try {
     await connectDB();
