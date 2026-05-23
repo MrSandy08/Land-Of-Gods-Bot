@@ -79,33 +79,41 @@ async function startBot() {
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
+    console.log('Actualización de conexión:', connection);
+    
     if (qr) qrcode.generate(qr, { small: true });
     
     if (connection === 'close') {
+      console.log('Conexión cerrada. Detalles del error:', lastDisconnect);
+      
       let shouldReconnect = true;
       
-      if (lastDisconnect?.error instanceof Boom) {
-        shouldReconnect = lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+      if (lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
+        shouldReconnect = false;
+        console.log('No se reconectará: cierre de sesión intencional');
+      } else {
+        console.log('Intentando reconectar en 2 segundos...');
       }
       
-      console.log('Conexión cerrada. ¿Reconectando?', shouldReconnect);
       if (shouldReconnect) {
         setTimeout(() => startBot(), 2000);
       }
     } else if (connection === 'open') {
-      console.log('Bot conectado correctamente');
+      console.log('✅ Bot conectado correctamente');
       pairingCode = "Bot ya está vinculado ✅";
       
       // Lógica para solicitar Pairing Code si no hay sesión
       if (!sock.authState.creds.registered) {
+        console.log('No hay sesión registrada, solicitando pairing code...');
         const phoneNumber = process.env.PHONE_NUMBER;
         if (phoneNumber) {
           try {
+            console.log('Solicitando pairing code para número:', phoneNumber);
             let code = await sock.requestPairingCode(phoneNumber);
             pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
-            console.log(`CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+            console.log(`✅ CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
           } catch (err) {
-            console.error("Error solicitando pairing code:", err);
+            console.error("❌ Error solicitando pairing code:", err);
             pairingCode = "Error al generar código. Verifica el número de teléfono.";
           }
         } else {
