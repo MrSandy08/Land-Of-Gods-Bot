@@ -12,7 +12,7 @@ const clearCreds = async (sessionId = 'default') => {
 
 const useMongoAuthState = async (sessionId = 'default', clear = false) => {
   let creds;
-  let keys = {};
+  const keysData = {};
 
   if (clear) {
     await clearCreds(sessionId);
@@ -22,17 +22,38 @@ const useMongoAuthState = async (sessionId = 'default', clear = false) => {
 
   if (stored) {
     creds = JSON.parse(JSON.stringify(stored.creds), BufferJSON.reviver);
-    keys = JSON.parse(JSON.stringify(stored.keys), BufferJSON.reviver);
+    const loadedKeys = JSON.parse(JSON.stringify(stored.keys), BufferJSON.reviver);
+    Object.assign(keysData, loadedKeys);
   } else {
     creds = initAuthCreds();
   }
+
+  const keys = {
+    get: (type, ids) => {
+      const key = {};
+      ids.forEach(id => {
+        const k = keysData[`${type}-${id}`];
+        if (k) {
+          key[id] = k;
+        }
+      });
+      return key;
+    },
+    set: (type, id, value) => {
+      if (value) {
+        keysData[`${type}-${id}`] = value;
+      } else {
+        delete keysData[`${type}-${id}`];
+      }
+    }
+  };
 
   const saveCreds = async () => {
     await AuthCreds.findByIdAndUpdate(
       sessionId,
       {
         creds: JSON.parse(JSON.stringify(creds), BufferJSON.replacer),
-        keys: JSON.parse(JSON.stringify(keys), BufferJSON.replacer)
+        keys: JSON.parse(JSON.stringify(keysData), BufferJSON.replacer)
       },
       { upsert: true, new: true }
     );
