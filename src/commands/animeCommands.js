@@ -1,0 +1,134 @@
+const axios = require('axios');
+const fmt = require('../../format');
+
+const reactionCommands = {
+  hug: {
+    phrases: [
+      "¡*{autor}* le dio un cálido abrazo a *{objetivo}*! 🤗💕",
+      "¡*{autor}* está abrazando a *{objetivo}*! 🥰",
+      "¡*{autor}* le da un abrazo gigante a *{objetivo}*! 💖"
+    ]
+  },
+  slap: {
+    phrases: [
+      "¡*{autor}* le dio una tremenda bofetada a *{objetivo}*! 💥👋",
+      "¡*{autor}* cachetea a *{objetivo}* con todas sus fuerzas! 🔥",
+      "¡Bam! *{autor}* le da una cachetada a *{objetivo}*! 😱"
+    ]
+  },
+  pat: {
+    phrases: [
+      "¡*{autor}* está acariciando la cabeza de *{objetivo}*! 🐾",
+      "¡*{autor}* le da unas patitas suaves a *{objetivo}*! ✨",
+      "¡*{autor}* le da palmaditas a *{objetivo}*! 🥰"
+    ]
+  },
+  poke: {
+    phrases: [
+      "¡*{autor}* está poking a *{objetivo}*! 👉😆",
+      "¡*{autor}* le da un toque curioso a *{objetivo}*! 🤔",
+      "¡Hey! *{autor}* está poking a *{objetivo}*! 😜"
+    ]
+  },
+  cuddle: {
+    phrases: [
+      "¡*{autor}* y *{objetivo}* están acurrucados juntos! 🥰💕",
+      "¡*{autor}* le da un acurrucamiento cálido a *{objetivo}*! 🤗",
+      "¡*{autor}* y *{objetivo}* se abrazan tiernamente! 💖"
+    ]
+  },
+  kiss: {
+    phrases: [
+      "¡*{autor}* le dio un beso a *{objetivo}*! 💋💕",
+      "¡*{autor}* besa a *{objetivo}* con mucho amor! 😘",
+      "¡Mwah! *{autor}* le da un beso a *{objetivo}*! 💖"
+    ]
+  },
+  bite: {
+    phrases: [
+      "¡*{autor}* le dio una mordida a *{objetivo}*! 😈🦷",
+      "¡*{autor}* está mordiendo a *{objetivo}*! 😜",
+      "¡Ñam! *{autor}* le da una mordidita a *{objetivo}*! 😆"
+    ]
+  },
+  highfive: {
+    phrases: [
+      "¡*{autor}* y *{objetivo}* se dan un high five! 🙌✨",
+      "¡*{autor}* le da un choca esos cinco a *{objetivo}*! 🎉",
+      "¡High five! *{autor}* y *{objetivo}* celebran! 🙌"
+    ]
+  },
+  dance: {
+    phrases: [
+      "¡*{autor}* y *{objetivo}* están bailando juntos! 💃🕺🎵",
+      "¡*{autor}* invita a *{objetivo}* a bailar! 🎶",
+      "¡Let's dance! *{autor}* y *{objetivo}* se mueven! 🕺💃"
+    ]
+  },
+  wave: {
+    phrases: [
+      "¡*{autor}* está saludando a *{objetivo}*! 👋✨",
+      "¡*{autor}* le dice hola a *{objetivo}* con la mano! 👋",
+      "¡Hey! *{autor}* saluda a *{objetivo}*! 👋😊"
+    ]
+  }
+};
+
+const getTargetId = (m, args) => {
+  if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+    return m.message.extendedTextMessage.contextInfo.mentionedJid[0];
+  }
+  if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+    return m.key.participant || m.key.remoteJid;
+  }
+  return null;
+};
+
+const getRandomPhrase = (phrases, author, target) => {
+  const randomIndex = Math.floor(Math.random() * phrases.length);
+  const authorName = author.split('@')[0];
+  const targetName = target.split('@')[0];
+  return phrases[randomIndex]
+    .replace('{autor}', authorName)
+    .replace('{objetivo}', targetName);
+};
+
+const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
+  const config = reactionCommands[command];
+  if (!config) return;
+
+  const targetId = getTargetId(m, args);
+  if (!targetId) {
+    return reply(fmt.aviso('Por favor, menciona a alguien (@usuario) o responde a un mensaje para usar este comando!'));
+  }
+
+  try {
+    const response = await axios.get(`https://nekos.best/api/v2/${command}`);
+    const gifUrl = response.data.results[0].url;
+
+    const reactionText = getRandomPhrase(config.phrases, sender, targetId);
+    const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
+
+    await sock.sendMessage(m.key.remoteJid, {
+      video: { url: gifUrl },
+      gifPlayback: true,
+      caption,
+      mentions: [sender, targetId]
+    }, { quoted: m });
+  } catch (error) {
+    console.error('Error en comando de anime:', error);
+    reply(fmt.aviso('Lo siento, hubo un error al procesar tu comando. Por favor, intenta de nuevo más tarde.'));
+  }
+};
+
+const createAnimeCommands = () => {
+  const commands = {};
+  Object.keys(reactionCommands).forEach(cmd => {
+    commands[cmd] = async (sock, m, args, currentUser, config, reply, sender) => {
+      await animeReactionHandler(cmd, sock, m, args, sender, reply);
+    };
+  });
+  return commands;
+};
+
+module.exports = createAnimeCommands();

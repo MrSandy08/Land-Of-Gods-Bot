@@ -1,0 +1,45 @@
+const User = require('../models/User');
+const moment = require('moment');
+const fmt = require('../../format');
+
+module.exports = {
+    top: async (sock, m, args, currentUser, config, reply) => {
+        const limit = parseInt(args[0]) || 10;
+        const top = await User.find().sort({ mensajes: -1 }).limit(limit);
+        let text = fmt.header(`Top ${limit} Mensajes`) + '\n';
+        text += fmt.listSection('RANKING');
+        top.forEach((u, i) => {
+            text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.mensajes} mjs`);
+        });
+        reply(text);
+    },
+
+    low: async (sock, m, args, currentUser, config, reply) => {
+        const low = await User.find().sort({ mensajes: 1 }).limit(10);
+        let text = fmt.header('Low 10 Mensajes') + '\n';
+        text += fmt.listSection('RANKING');
+        low.forEach((u, i) => {
+            text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.mensajes} mjs`);
+        });
+        reply(text);
+    },
+
+    inactivos: async (sock, m, args, currentUser, config, reply) => {
+        const days = parseInt(args[0]) || config.minInactividad;
+        const threshold = moment().subtract(days, 'days').toDate();
+        const inactivos = await User.find({ 
+            lastSeen: { $lt: threshold },
+            personaje: { $ne: null }
+        });
+
+        if (inactivos.length === 0) return reply(fmt.aviso(`No hay inactivos de ${days} días.`));
+
+        let text = fmt.header(`Inactivos (${days}+ días)`) + '\n';
+        text += fmt.listSection('USUARIOS');
+        inactivos.forEach((u, i) => {
+            const d = moment().diff(moment(u.lastSeen), 'days');
+            text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.personaje}`) + `       𝄄   _hace ${d} dias sin hablar_\n\n`;
+        });
+        reply(text);
+    }
+};

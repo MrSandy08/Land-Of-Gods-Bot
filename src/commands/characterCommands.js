@@ -1,0 +1,130 @@
+const User = require('../models/User');
+const Pedido = require('../models/Pedido');
+const moment = require('moment');
+const fmt = require('../../format');
+const { isAdmin, getUserId } = require('../utils');
+
+module.exports = {
+    asignar: async (sock, m, args, currentUser, config, reply) => {
+        if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins pueden usar este comando.'));
+        if (args.length < 2) return reply(fmt.aviso('Uso: !asignar @user Personaje (Fandom)'));
+        
+        const targetId = await getUserId(args[0], m);
+        if (!targetId) return reply(fmt.aviso('No se encontró al usuario.'));
+
+        let fullText = args.slice(1).join(' ');
+        let personaje = fullText;
+        let fandom = 'General';
+        
+        const fandomMatch = fullText.match(/\(([^)]+)\)/);
+        if (fandomMatch) {
+            fandom = fandomMatch[1];
+            personaje = fullText.replace(fandomMatch[0], '').trim();
+        }
+
+        const existing = await User.findOne({ personaje: new RegExp(`^${personaje}$`, 'i'), fandom: new RegExp(`^${fandom}$`, 'i') });
+        if (existing) return reply(fmt.aviso(`El personaje *${personaje}* (${fandom}) ya está ocupado por @${existing._id.split('@')[0]}.`));
+
+        let targetUser = await User.findById(targetId);
+        if (!targetUser) targetUser = new User({ _id: targetId });
+        
+        targetUser.personaje = personaje;
+        targetUser.fandom = fandom;
+        await targetUser.save();
+
+        reply(fmt.aviso(`Personaje *${personaje}* (${fandom}) asignado a @${targetId.split('@')[0]}.`));
+    },
+
+    personajes: async (sock, m, args, currentUser, config, reply) => {
+        const users = await User.find({ personaje: { $ne: null } }).sort({ fandom: 1 });
+        if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados.'));
+
+        let text = fmt.header('Lista de Personajes') + '\n';
+        const grouped = {};
+        users.forEach(u => {
+            if (!grouped[u.fandom]) grouped[u.fandom] = [];
+            grouped[u.fandom].push(u);
+        });
+
+        for (const fandom in grouped) {
+            text += fmt.listSection(fandom.toUpperCase());
+            grouped[fandom].forEach((u, i) => {
+                text += fmt.listItem(`${u.personaje} - @${u._id.split('@')[0]}`);
+            });
+            text += '\n';
+        }
+        reply(text);
+    },
+
+    perfil: async (sock, m, args, currentUser, config, reply, sender) => {
+        const targetId = (args.length > 0) ? await getUserId(args[0], m) : sender;
+        const u = await User.findById(targetId);
+        if (!u) return reply(fmt.aviso('Usuario no encontrado.'));
+
+        const diff = moment().diff(moment(u.lastSeen), 'days');
+        let status = 'Activo';
+        if (u.excusa?.activa) status = 'Con Excusa';
+        else if (diff >= config.minInactividad) status = 'Inactivo';
+
+        let text = fmt.header('Perfil de Usuario') + '\n';
+        text += fmt.infoHeader();
+        text += fmt.infoField('Personaje', u.personaje || 'Ninguno');
+        text += fmt.infoField('Fandom', u.fandom || 'Ninguno');
+        text += fmt.infoField('Mensajes', u.mensajes);
+        text += fmt.infoField('Estado', status);
+        text += fmt.infoField('Advertencias', `${u.advertencias.length}/${config.maxAdvertencias}`);
+        text += fmt.infoField('Última vez', moment(u.lastSeen).fromNow());
+        
+        text += '\n\n' + fmt.aviso('Información actualizada.');
+        reply(text);
+    },
+
+    sinpersonaje: async (sock, m, args, currentUser, config, reply) => {
+        const users = await User.find({ personaje: null });
+        if (users.length === 0) return reply(fmt.aviso('Todos tienen personaje.'));
+        
+        let text = fmt.header('Sin Personaje') + '\n';
+        text += fmt.listSection('USUARIOS');
+        users.forEach((u, i) => {
+            text += fmt.listItem(`@${u._id.split('@')[0]}`);
+        });
+        reply(text);
+    },
+
+    pedir: async (sock, m, args, currentUser, config, reply, sender) => {
+        if (args.length < 1) return reply(fmt.aviso('Uso: !pedir Personaje (Fandom)'));
+        let fullText = args.join(' ');
+        let personaje = fullText;
+        let fandom = 'General';
+        
+        const fandomMatch = fullText.match(/\(([^)]+)\)/);
+        if (fandomMatch) {
+            fandom = fandomMatch[1];
+            personaje = fullText.replace(fandomMatch[0], '').trim();
+        }
+
+        await Pedido.create({ user: sender, personaje, fandom });
+        reply(fmt.aviso(`Tu pedido para *${personaje}* (${fandom}) ha sido registrado.`));
+    },
+
+    pedidos: async (sock, m, args, currentUser, config, reply) => {
+        const pedidos = await Pedido.find().sort({ fandom: 1 });
+        if (pedidos.length === 0) return reply(fmt.aviso('No hay pedidos pendientes.'));
+
+        let text = fmt.header('Lista de Pedidos') + '\n';
+        const grouped = {};
+        pedidos.forEach(p => {
+            if (!grouped[p.fandom]) grouped[p.fandom] = [];
+            grouped[p.fandom].push(p);
+        });
+
+        for (const fandom in grouped) {
+            text += fmt.listSection(fandom);
+            grouped[fandom].forEach((p, i) => {
+                text += fmt.listItem(p.personaje);
+            });
+            text += '\n';
+        }
+        reply(text);
+    }
+};
