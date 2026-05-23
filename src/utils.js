@@ -8,7 +8,20 @@ const isAdmin = async (m, sock) => {
     return user && (user.admin === 'admin' || user.admin === 'superadmin');
 };
 
+const getTargetId = (m) => {
+    if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.participant) {
+        return m.message.extendedTextMessage.contextInfo.participant;
+    }
+    if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+        return m.message.extendedTextMessage.contextInfo.mentionedJid[0];
+    }
+    return null;
+};
+
 const getUserId = async (text, m) => {
+    const quotedTarget = getTargetId(m);
+    if (quotedTarget) return quotedTarget;
+    
     if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
         return m.message.extendedTextMessage.contextInfo.mentionedJid[0];
     }
@@ -22,4 +35,4 @@ const getUserId = async (text, m) => {
     return null;
 };
 
-module.exports = { isAdmin, getUserId };
+module.exports = { isAdmin, getUserId, getTargetId };

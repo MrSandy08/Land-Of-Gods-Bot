@@ -1,5 +1,6 @@
 const axios = require('axios');
 const fmt = require('../../format');
+const { getTargetId } = require('../utils');
 
 const reactionCommands = {
   hug: {
@@ -74,16 +75,6 @@ const reactionCommands = {
   }
 };
 
-const getTargetId = (m, args) => {
-  if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
-    return m.message.extendedTextMessage.contextInfo.mentionedJid[0];
-  }
-  if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
-    return m.key.participant || m.key.remoteJid;
-  }
-  return null;
-};
-
 const getRandomPhrase = (phrases, author, target) => {
   const randomIndex = Math.floor(Math.random() * phrases.length);
   const authorName = author.split('@')[0];
@@ -97,20 +88,23 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
   const config = reactionCommands[command];
   if (!config) return;
 
-  const targetId = getTargetId(m, args);
+  let targetId = getTargetId(m);
+  
   if (!targetId) {
-    return reply(fmt.aviso('Por favor, menciona a alguien (@usuario) o responde a un mensaje para usar este comando!'));
+    targetId = sender;
   }
 
   try {
     const response = await axios.get(`https://nekos.best/api/v2/${command}`);
     const gifUrl = response.data.results[0].url;
 
+    const gifBuffer = await axios.get(gifUrl, { responseType: 'arraybuffer' });
+
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
     const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
 
     await sock.sendMessage(m.key.remoteJid, {
-      video: { url: gifUrl },
+      video: Buffer.from(gifBuffer.data),
       gifPlayback: true,
       caption,
       mentions: [sender, targetId]
