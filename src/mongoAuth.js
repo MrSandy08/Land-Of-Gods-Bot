@@ -1,9 +1,22 @@
 const AuthCreds = require('./models/AuthCreds');
 const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 
-const useMongoAuthState = async (sessionId = 'default') => {
+const clearCreds = async (sessionId = 'default') => {
+  try {
+    await AuthCreds.findByIdAndDelete(sessionId);
+    console.log('Credenciales borradas correctamente');
+  } catch (err) {
+    console.error('Error al borrar credenciales:', err);
+  }
+};
+
+const useMongoAuthState = async (sessionId = 'default', clear = false) => {
   let creds;
   let keys = {};
+
+  if (clear) {
+    await clearCreds(sessionId);
+  }
 
   const stored = await AuthCreds.findById(sessionId);
 
@@ -31,4 +44,4 @@ const useMongoAuthState = async (sessionId = 'default') => {
   };
 };
 
-module.exports = useMongoAuthState;
+module.exports = { useMongoAuthState, clearCreds };

@@ -14,7 +14,7 @@ const User = require('./src/models/User');
 const Config = require('./src/models/Config');
 const Group = require('./src/models/Group');
 const handleCommand = require('./src/commands');
-const useMongoAuthState = require('./src/mongoAuth');
+const { useMongoAuthState, clearCreds } = require('./src/mongoAuth');
 const moment = require('moment');
 const fmt = require('./format');
 
@@ -87,16 +87,23 @@ async function startBot() {
       console.log('Conexión cerrada. Detalles del error:', lastDisconnect);
       
       let shouldReconnect = true;
+      let clearOldCreds = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       
       if (statusCode === 403) {
         shouldReconnect = false;
         console.log('No se reconectará: cierre de sesión intencional (403)');
+      } else if (statusCode === 401) {
+        console.log('Error 401 detectado: borramos credenciales antiguas y reiniciamos...');
+        clearOldCreds = true;
       } else {
         console.log('Intentando reconectar en 2 segundos... (Código de error:', statusCode, ')');
       }
       
       if (shouldReconnect) {
+        if (clearOldCreds) {
+          await clearCreds('mini-beyonder-session');
+        }
         setTimeout(() => startBot(), 2000);
       }
     } else if (connection === 'open') {
