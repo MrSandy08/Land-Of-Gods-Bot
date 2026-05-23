@@ -2,7 +2,8 @@ const {
   default: makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  makeInMemoryStore,
+  useMultiFileAuthState,
+  Browsers,
   jidDecode
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
@@ -14,7 +15,6 @@ const User = require('./src/models/User');
 const Config = require('./src/models/Config');
 const Group = require('./src/models/Group');
 const handleCommand = require('./src/commands');
-const { useMongoAuthState, clearCreds } = require('./src/mongoAuth');
 const moment = require('moment');
 const fmt = require('./format');
 
@@ -61,15 +61,15 @@ async function startBot() {
     pairingCode = "Error de base de datos. Revisa MONGO_URI.";
   }
 
-  const { state, saveCreds } = await useMongoAuthState('mini-beyonder-session');
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
     logger: P({ level: 'silent' }),
-    printQRInTerminal: false, // Desactivamos QR
+    printQRInTerminal: false,
     auth: state,
-    browser: ["Ubuntu", "Chrome", "20.0.04"], // Necesario para Pairing Code
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
     getMessage: async (key) => {
       return { conversation: 'sua-bot' };
     }
@@ -80,76 +80,78 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
+  let pairingCodeRequested = false;
+  
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    const { connection, lastDisconnect } = update;
     console.log('Actualización de conexión:', connection);
     
-    if (qr) qrcode.generate(qr, { small: true });
+    // Solicitar pairing code cuando la conexión está en estado 'connecting' y no hay sesión registrada
+    if (connection === 'connecting' && !sock.authState.creds.registered && !isPairingInProgress && !pairingCodeRequested) {
+      pairingCodeRequested = true;
+      console.log('No hay sesión registrada, solicitando pairing code...');
+      isPairingInProgress = true;
+      const phoneNumber = process.env.PHONE_NUMBER;
+      if (phoneNumber) {
+        try {
+          console.log('Solicitando pairing code para número:', phoneNumber);
+          // Esperar un poco para asegurarse que el socket está listo
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          let code = await sock.requestPairingCode(phoneNumber);
+          pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
+          console.log(`✅ CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+          console.log('⚠️ Por favor, usa este código en WhatsApp en los próximos 60 segundos...');
+        } catch (err) {
+          console.error("❌ Error solicitando pairing code:", err);
+          isPairingInProgress = false;
+          pairingCodeRequested = false;
+          pairingCode = "Error al generar código. Verifica el número de teléfono.";
+        }
+      } else {
+        isPairingInProgress = false;
+        pairingCodeRequested = false;
+        pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
+        console.log(pairingCode);
+      }
+    }
     
     if (connection === 'close') {
       console.log('Conexión cerrada. Detalles del error:', lastDisconnect);
       
       let shouldReconnect = true;
-      let clearOldCreds = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
       
-      if (statusCode === 403) {
+      console.log(`Conexión cerrada. Razón: ${reason} (Código: ${statusCode})`);
+      
+      if (reason === DisconnectReason.loggedOut || statusCode === 401) {
+        if (isPairingInProgress) {
+          console.log('Vinculación en progreso: reconectando para esperar el código...');
+          shouldReconnect = true;
+        } else {
+          console.log('Sesión cerrada o inválida. NO reconectar automáticamente.');
+          shouldReconnect = false;
+          consecutive401Errors = 0;
+        }
+      } else if (statusCode === 403) {
         shouldReconnect = false;
         consecutive401Errors = 0;
         console.log('No se reconectará: cierre de sesión intencional (403)');
-      } else if (statusCode === 401) {
-        if (isPairingInProgress) {
-          console.log('Vinculación en progreso: no borramos credenciales');
-        } else {
-          consecutive401Errors++;
-          console.log(`Error 401 detectado (${consecutive401Errors}/${MAX_401_ERRORS})`);
-          
-          if (consecutive401Errors >= MAX_401_ERRORS) {
-            console.log('Máximos intentos de 401 alcanzados: borramos credenciales corruptas y reiniciamos...');
-            clearOldCreds = true;
-            consecutive401Errors = 0;
-          }
-        }
       } else {
         consecutive401Errors = 0;
-        console.log('Intentando reconectar en 2 segundos... (Código de error:', statusCode, ')');
+        const delay = isPairingInProgress ? 10 : 2;
+        console.log(`Intentando reconectar en ${delay} segundos...`);
       }
       
       if (shouldReconnect) {
-        if (clearOldCreds) {
-          await clearCreds('mini-beyonder-session');
-        }
-        setTimeout(() => startBot(), 2000);
+        const reconnectDelay = isPairingInProgress ? 3000 : 2000;
+        setTimeout(() => startBot(), reconnectDelay);
       }
     } else if (connection === 'open') {
       console.log('✅ Bot conectado correctamente');
       isPairingInProgress = false;
       consecutive401Errors = 0;
       pairingCode = "Bot ya está vinculado ✅";
-      
-      // Lógica para solicitar Pairing Code si no hay sesión
-      if (!sock.authState.creds.registered) {
-        console.log('No hay sesión registrada, solicitando pairing code...');
-        isPairingInProgress = true;
-        const phoneNumber = process.env.PHONE_NUMBER;
-        if (phoneNumber) {
-          try {
-            console.log('Solicitando pairing code para número:', phoneNumber);
-            let code = await sock.requestPairingCode(phoneNumber);
-            pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
-            console.log(`✅ CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
-            console.log('⚠️ Por favor, usa este código en WhatsApp en los próximos 60 segundos...');
-          } catch (err) {
-            console.error("❌ Error solicitando pairing code:", err);
-            isPairingInProgress = false;
-            pairingCode = "Error al generar código. Verifica el número de teléfono.";
-          }
-        } else {
-          isPairingInProgress = false;
-          pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
-          console.log(pairingCode);
-        }
-      }
     }
   });
 

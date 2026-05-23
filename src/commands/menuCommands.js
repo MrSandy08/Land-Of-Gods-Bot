@@ -17,7 +17,7 @@ module.exports = {
         text += fmt.cmdLine('📉', 'low', 'Usuarios con menos mensajes');
         text += fmt.cmdLine('💤', 'inactivos', 'Ver usuarios inactivos');
 
-        text += fmt.category('Reacciones Anime');
+        text += fmt.category('Reacciones');
         text += fmt.cmdLine('🤗', 'hug', 'Dar un abrazo a alguien');
         text += fmt.cmdLine('👋', 'slap', 'Dar una bofetada');
         text += fmt.cmdLine('🐾', 'pat', 'Acariciar la cabeza');
