@@ -23,6 +23,7 @@ const spamState = new Map();
 
 // Variable para guardar el código de vinculación
 let pairingCode = "Esperando código...";
+let isPairingInProgress = false;
 
 // Servidor Express ultra ligero para hosting (Render, Railway, etc.)
 // Se inicia ANTES de cualquier otra cosa para evitar SIGTERM
@@ -93,9 +94,11 @@ async function startBot() {
       if (statusCode === 403) {
         shouldReconnect = false;
         console.log('No se reconectará: cierre de sesión intencional (403)');
-      } else if (statusCode === 401) {
+      } else if (statusCode === 401 && !isPairingInProgress) {
         console.log('Error 401 detectado: borramos credenciales antiguas y reiniciamos...');
         clearOldCreds = true;
+      } else if (isPairingInProgress) {
+        console.log('Vinculación en progreso: no borramos credenciales');
       } else {
         console.log('Intentando reconectar en 2 segundos... (Código de error:', statusCode, ')');
       }
@@ -108,11 +111,13 @@ async function startBot() {
       }
     } else if (connection === 'open') {
       console.log('✅ Bot conectado correctamente');
+      isPairingInProgress = false;
       pairingCode = "Bot ya está vinculado ✅";
       
       // Lógica para solicitar Pairing Code si no hay sesión
       if (!sock.authState.creds.registered) {
         console.log('No hay sesión registrada, solicitando pairing code...');
+        isPairingInProgress = true;
         const phoneNumber = process.env.PHONE_NUMBER;
         if (phoneNumber) {
           try {
@@ -120,11 +125,14 @@ async function startBot() {
             let code = await sock.requestPairingCode(phoneNumber);
             pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
             console.log(`✅ CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+            console.log('⚠️ Por favor, usa este código en WhatsApp en los próximos 60 segundos...');
           } catch (err) {
             console.error("❌ Error solicitando pairing code:", err);
+            isPairingInProgress = false;
             pairingCode = "Error al generar código. Verifica el número de teléfono.";
           }
         } else {
+          isPairingInProgress = false;
           pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
           console.log(pairingCode);
         }
