@@ -2,7 +2,6 @@ const {
   default: makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  useMultiFileAuthState,
   Browsers,
   jidDecode
 } = require('@whiskeysockets/baileys');
@@ -15,6 +14,7 @@ const User = require('./src/models/User');
 const Config = require('./src/models/Config');
 const Group = require('./src/models/Group');
 const handleCommand = require('./src/commands');
+const { useMongoAuthState, clearCreds } = require('./src/mongoAuth');
 const moment = require('moment');
 const fmt = require('./format');
 
@@ -61,7 +61,7 @@ async function startBot() {
     pairingCode = "Error de base de datos. Revisa MONGO_URI.";
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+  const { state, saveCreds } = await useMongoAuthState('mini-beyonder-session');
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
