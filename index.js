@@ -82,8 +82,12 @@ async function startBot() {
     if (qr) qrcode.generate(qr, { small: true });
     
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect?.error instanceof Boom) ? 
-        lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut : true;
+      let shouldReconnect = true;
+      
+      if (lastDisconnect?.error instanceof Boom) {
+        shouldReconnect = lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+      }
+      
       console.log('Conexión cerrada. ¿Reconectando?', shouldReconnect);
       if (shouldReconnect) {
         setTimeout(() => startBot(), 2000);
