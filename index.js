@@ -87,12 +87,13 @@ async function startBot() {
       console.log('Conexión cerrada. Detalles del error:', lastDisconnect);
       
       let shouldReconnect = true;
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
       
-      if (lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
+      if (statusCode === 403) {
         shouldReconnect = false;
-        console.log('No se reconectará: cierre de sesión intencional');
+        console.log('No se reconectará: cierre de sesión intencional (403)');
       } else {
-        console.log('Intentando reconectar en 2 segundos...');
+        console.log('Intentando reconectar en 2 segundos... (Código de error:', statusCode, ')');
       }
       
       if (shouldReconnect) {
