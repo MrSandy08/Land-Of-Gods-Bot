@@ -14,7 +14,7 @@ const reactionCommands = {
     phrases: [
       "¡*{autor}* le dio una tremenda bofetada a *{objetivo}*! 💥👋",
       "¡*{autor}* cachetea a *{objetivo}* con todas sus fuerzas! 🔥",
-      "¡Bam! *{autor}* le da una cachetada a *{objetivo}*! 😱"
+      "¡Bam! *{autor}* le da una cachetada a *{objetivo}*!"
     ]
   },
   pat: {
@@ -88,11 +88,7 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
   const config = reactionCommands[command];
   if (!config) return;
 
-  let targetId = getTargetId(m);
-  
-  if (!targetId) {
-    targetId = sender;
-  }
+  const targetId = getTargetId(m, sender);
 
   try {
     const response = await axios.get(`https://nekos.best/api/v2/${command}`);

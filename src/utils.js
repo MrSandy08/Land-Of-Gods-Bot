@@ -8,19 +8,19 @@ const isAdmin = async (m, sock) => {
     return user && (user.admin === 'admin' || user.admin === 'superadmin');
 };
 
-const getTargetId = (m) => {
+const getTargetId = (m, sender) => {
     if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.participant) {
         return m.message.extendedTextMessage.contextInfo.participant;
     }
     if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
         return m.message.extendedTextMessage.contextInfo.mentionedJid[0];
     }
-    return null;
+    return sender;
 };
 
-const getUserId = async (text, m) => {
-    const quotedTarget = getTargetId(m);
-    if (quotedTarget) return quotedTarget;
+const getUserId = async (text, m, sender) => {
+    const quotedTarget = getTargetId(m, sender);
+    if (quotedTarget && quotedTarget !== sender) return quotedTarget;
     
     if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
         return m.message.extendedTextMessage.contextInfo.mentionedJid[0];
@@ -32,7 +32,7 @@ const getUserId = async (text, m) => {
         const user = await User.findOne({ personaje: new RegExp(`^${text.trim()}$`, 'i') });
         if (user) return user._id;
     }
-    return null;
+    return sender;
 };
 
 module.exports = { isAdmin, getUserId, getTargetId };

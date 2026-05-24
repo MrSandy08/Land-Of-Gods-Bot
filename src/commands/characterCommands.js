@@ -5,11 +5,11 @@ const fmt = require('../../format');
 const { isAdmin, getUserId } = require('../utils');
 
 module.exports = {
-    asignar: async (sock, m, args, currentUser, config, reply) => {
+    asignar: async (sock, m, args, currentUser, config, reply, sender) => {
         if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins pueden usar este comando.'));
         if (args.length < 2) return reply(fmt.aviso('Uso: !asignar @user Personaje (Fandom)'));
         
-        const targetId = await getUserId(args[0], m);
+        const targetId = await getUserId(args[0], m, sender);
         if (!targetId) return reply(fmt.aviso('No se encontró al usuario.'));
 
         let fullText = args.slice(1).join(' ');
@@ -57,7 +57,7 @@ module.exports = {
     },
 
     perfil: async (sock, m, args, currentUser, config, reply, sender) => {
-        const targetId = (args.length > 0) ? await getUserId(args[0], m) : sender;
+        const targetId = (args.length > 0) ? await getUserId(args[0], m, sender) : sender;
         const u = await User.findById(targetId);
         if (!u) return reply(fmt.aviso('Usuario no encontrado.'));
 
