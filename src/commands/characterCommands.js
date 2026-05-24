@@ -39,7 +39,7 @@ module.exports = {
         const users = await User.find({ personaje: { $ne: null } }).sort({ fandom: 1 });
         if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados.'));
 
-        let text = fmt.header() + '\n';
+        let text = fmt.header();
         const grouped = {};
         users.forEach(u => {
             if (!grouped[u.fandom]) grouped[u.fandom] = [];
@@ -83,7 +83,7 @@ module.exports = {
         const users = await User.find({ personaje: null });
         if (users.length === 0) return reply(fmt.aviso('Todos tienen personaje.'));
         
-        let text = fmt.header() + '\n';
+        let text = fmt.header();
         text += fmt.listSection('USUARIOS');
         const mentions = [];
         users.forEach((u) => {

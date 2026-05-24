@@ -6,7 +6,7 @@ module.exports = {
     top: async (sock, m, args, currentUser, config, reply) => {
         const limit = parseInt(args[0]) || 10;
         const top = await User.find().sort({ mensajes: -1 }).limit(limit);
-        let text = fmt.header() + '\n';
+        let text = fmt.header();
         text += fmt.listSection('RANKING');
         const mentions = [];
         top.forEach((u) => {
@@ -38,7 +38,7 @@ module.exports = {
 
         if (inactivos.length === 0) return reply(fmt.aviso(`No hay inactivos de ${days} días.`));
 
-        let text = fmt.header() + '\n';
+        let text = fmt.header();
         text += fmt.listSection('USUARIOS');
         const mentions = [];
         inactivos.forEach((u) => {
