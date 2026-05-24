@@ -77,11 +77,9 @@ const reactionCommands = {
 
 const getRandomPhrase = (phrases, author, target) => {
   const randomIndex = Math.floor(Math.random() * phrases.length);
-  const authorName = author.split('@')[0];
-  const targetName = target.split('@')[0];
   return phrases[randomIndex]
-    .replace('{autor}', authorName)
-    .replace('{objetivo}', targetName);
+    .replace('*{autor}*', fmt.mention(author))
+    .replace('*{objetivo}*', fmt.mention(target));
 };
 
 const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
@@ -95,11 +93,13 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
     const gifUrl = response.data.results[0].url;
     const videoUrl = gifUrl.replace('.gif', '.mp4');
 
+    const videoBuffer = await axios.get(videoUrl, { responseType: 'arraybuffer' });
+
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
     const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
 
     await sock.sendMessage(m.key.remoteJid, {
-      video: { url: videoUrl },
+      video: Buffer.from(videoBuffer.data),
       gifPlayback: true,
       caption,
       mentions: [sender, targetId]
