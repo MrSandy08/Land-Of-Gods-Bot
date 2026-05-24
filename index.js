@@ -2,7 +2,7 @@ const {
   default: makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  initAuthCreds,
+  useMultiFileAuthState,
   Browsers,
   jidDecode
 } = require('@whiskeysockets/baileys');
@@ -17,6 +17,11 @@ const Group = require('./src/models/Group');
 const handleCommand = require('./src/commands');
 const moment = require('moment');
 const fmt = require('./format');
+const fs = require('fs');
+const path = require('path');
+
+// Definimos la carpeta local de la sesión
+const authFolder = path.join(__dirname, 'auth_info_baileys');
 
 // Anti-spam state
 const spamState = new Map();
@@ -24,11 +29,8 @@ const spamState = new Map();
 // Variable para guardar el código de vinculación
 let pairingCode = "Esperando código...";
 let isPairingInProgress = false;
-let consecutive401Errors = 0;
-const MAX_401_ERRORS = 2;
 
 // Servidor Express ultra ligero para hosting (Render, Railway, etc.)
-// Se inicia ANTES de cualquier otra cosa para evitar SIGTERM
 const app = express();
 const PORT = process.env.PORT || 7860;
 
@@ -53,7 +55,6 @@ const dailyJob = async (sock) => {
 };
 
 async function startBot() {
-
   try {
     await connectDB();
   } catch (err) {
@@ -61,41 +62,17 @@ async function startBot() {
     pairingCode = "Error de base de datos. Revisa MONGO_URI.";
   }
 
-  console.log("Iniciando bot en modo Volátil (Sin guardado de sesión)...");
+  console.log("Iniciando bot con sesión local estándar...");
 
-  // 1. Creamos credenciales completamente nuevas y vacías en memoria
-  const creds = initAuthCreds();
-  
-  // 2. Estructuramos el objeto auth sin persistencia
-  const keysData = {};
-  const auth = {
-    creds: creds,
-    keys: {
-      get: (type, ids) => {
-        const key = {};
-        ids.forEach(id => {
-          const k = keysData[`${type}-${id}`];
-          if (k) key[id] = k;
-        });
-        return key;
-      },
-      set: (type, id, value) => {
-        if (value) {
-          keysData[`${type}-${id}`] = value;
-        } else {
-          delete keysData[`${type}-${id}`];
-        }
-      }
-    }
-  };
-
+  // 1. Inicializa las credenciales en la carpeta local
+  const { state, saveCreds } = await useMultiFileAuthState(authFolder);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
     logger: P({ level: 'silent' }),
     printQRInTerminal: false,
-    auth: auth,
+    auth: state,
     browser: ["Ubuntu", "Chrome", "20.0.04"],
     getMessage: async (key) => {
       return { conversation: 'sua-bot' };
@@ -105,22 +82,28 @@ async function startBot() {
   // Programar job diario (cada 24h)
   setInterval(() => dailyJob(sock), 24 * 60 * 60 * 1000);
 
-  let pairingCodeRequested = false;
-  
+  // 2. Escucha de eventos de conexión sin bucles infinitos
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
-    console.log('Actualización de conexión:', connection);
-    
-    // Solicitar pairing code cuando la conexión está en estado 'connecting' y no hay sesión registrada
-    if (connection === 'connecting' && !sock.authState.creds.registered && !isPairingInProgress && !pairingCodeRequested) {
-      pairingCodeRequested = true;
-      console.log('No hay sesión registrada, solicitando pairing code...');
+
+    if (connection === 'connecting') {
+      console.log('Conectando con WhatsApp...');
+    }
+
+    if (connection === 'open') {
+      console.log('¡Bot conectado y listo!');
+      isPairingInProgress = false;
+      pairingCode = "Bot ya está vinculado ✅";
+    }
+
+    // Lógica para el Código de Vinculación
+    if (connection === 'connecting' && !sock.authState.creds.registered && !isPairingInProgress) {
       isPairingInProgress = true;
       const phoneNumber = process.env.PHONE_NUMBER;
       if (phoneNumber) {
         try {
           console.log('Solicitando pairing code para número:', phoneNumber);
-          // Esperar un poco para evitar error 503 / Stream Error
+          // Esperar 3 segundos para evitar error 503 / Stream Error
           await new Promise(resolve => setTimeout(resolve, 3000));
           let code = await sock.requestPairingCode(phoneNumber);
           pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
@@ -131,56 +114,40 @@ async function startBot() {
         } catch (err) {
           console.error("❌ Error solicitando pairing code:", err);
           isPairingInProgress = false;
-          pairingCodeRequested = false;
           pairingCode = "Error al generar código. Verifica el número de teléfono.";
         }
       } else {
         isPairingInProgress = false;
-        pairingCodeRequested = false;
         pairingCode = "Falta PHONE_NUMBER en las variables de entorno.";
         console.log(pairingCode);
       }
     }
-    
+
     if (connection === 'close') {
-      console.log('Conexión cerrada. Detalles del error:', lastDisconnect);
-      
-      let shouldReconnect = true;
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      
-      console.log(`Conexión cerrada. Razón: ${reason} (Código: ${statusCode})`);
-      
-      if (reason === DisconnectReason.loggedOut || statusCode === 401) {
-        if (isPairingInProgress) {
-          console.log('Vinculación en progreso: reconectando para esperar el código...');
-          shouldReconnect = true;
-        } else {
-          console.log('Sesión cerrada o inválida. NO reconectar automáticamente.');
-          shouldReconnect = false;
-          consecutive401Errors = 0;
+      console.log(`Conexión cerrada. Razón de Baileys: ${reason}`);
+
+      // Si el error es por sesión inválida (401) o error crítico de flujo (515) sin estar vinculados
+      if (reason === DisconnectReason.loggedOut || reason === 401 || (reason === 515 && !state.creds.registered)) {
+        console.log('Sesión inválida o corrupta. Limpiando carpeta de autenticación...');
+        
+        // Borramos la carpeta local para que no de errores la próxima vez
+        if (fs.existsSync(authFolder)) {
+          fs.rmSync(authFolder, { recursive: true, force: true });
         }
-      } else if (statusCode === 403) {
-        shouldReconnect = false;
-        consecutive401Errors = 0;
-        console.log('No se reconectará: cierre de sesión intencional (403)');
+        
+        console.log('Reiniciando bot para una conexión limpia...');
+        setTimeout(() => startBot(), 2000);
       } else {
-        consecutive401Errors = 0;
-        const delay = isPairingInProgress ? 10 : 2;
-        console.log(`Intentando reconectar en ${delay} segundos...`);
+        // Si se cayó por internet u otra razón de red, sí intentamos reconectar de forma segura
+        console.log('Desconexión temporal, reiniciando en 5 segundos...');
+        setTimeout(() => startBot(), 5000);
       }
-      
-      if (shouldReconnect) {
-        const reconnectDelay = isPairingInProgress ? 3000 : 2000;
-        setTimeout(() => startBot(), reconnectDelay);
-      }
-    } else if (connection === 'open') {
-      console.log('✅ Bot conectado correctamente');
-      isPairingInProgress = false;
-      consecutive401Errors = 0;
-      pairingCode = "Bot ya está vinculado ✅";
     }
   });
+
+  // 3. Guarda las credenciales cuando cambien (esencial para Baileys)
+  sock.ev.on('creds.update', saveCreds);
 
   // Evento: Participantes del grupo cambian (entrada/salida/expulsión)
   sock.ev.on('group-participants.update', async (anu) => {
