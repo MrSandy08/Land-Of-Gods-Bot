@@ -45,7 +45,7 @@ module.exports = {
         const users = await User.find({ 'advertencias.0': { $exists: true } }).sort({ fandom: 1 });
         if (users.length === 0) return reply(fmt.aviso('No hay advertencias.'));
 
-        let text = fmt.header('Lista de Advertencias') + '\n';
+        let text = fmt.header() + '\n';
         const grouped = {};
         users.forEach(u => {
             if (!grouped[u.fandom || 'Sin Fandom']) grouped[u.fandom || 'Sin Fandom'] = [];

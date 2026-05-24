@@ -72,7 +72,7 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
     });
 
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
-    const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
+    const caption = fmt.header() + '\n\n' + fmt.aviso(reactionText);
 
     console.log('📤 Enviando GIF...');
     

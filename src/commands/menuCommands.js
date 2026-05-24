@@ -3,7 +3,7 @@ const { isAdmin } = require('../utils');
 
 module.exports = {
     menu: async (sock, m, args, currentUser, config, reply) => {
-        let text = fmt.header('Menú de Organización') + '\n';
+        let text = fmt.header() + '\n';
         
         text += fmt.category('Personajes');
         text += fmt.cmdLine('🎭', 'personajes', 'Lista de personajes ocupados');

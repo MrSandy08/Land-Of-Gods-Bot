@@ -33,7 +33,7 @@ module.exports = {
         const users = await User.find({ 'excusa.activa': true });
         if (users.length === 0) return reply(fmt.aviso('No hay excusas activas.'));
 
-        let text = fmt.header('Lista de Excusas') + '\n';
+        let text = fmt.header() + '\n';
         text += fmt.listSection('ACTUALES');
         users.forEach((u, i) => {
             const diasRestantes = moment(u.excusa.fin).diff(moment(), 'days');
