@@ -91,22 +91,22 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
   try {
     const response = await axios.get(`https://nekos.best/api/v2/${command}`);
     const gifUrl = response.data.results[0].url;
-    const videoUrl = gifUrl.replace('.gif', '.mp4');
 
-    const videoBuffer = await axios.get(videoUrl, { responseType: 'arraybuffer' });
+    const gifBuffer = await axios.get(gifUrl, { responseType: 'arraybuffer' });
 
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
     const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
 
     await sock.sendMessage(m.key.remoteJid, {
-      video: Buffer.from(videoBuffer.data),
+      video: Buffer.from(gifBuffer.data),
       gifPlayback: true,
       caption,
       mentions: [sender, targetId]
     }, { quoted: m });
   } catch (error) {
-    console.error('Error en comando de anime:', error);
-    reply(fmt.aviso('Lo siento, hubo un error al procesar tu comando. Por favor, intenta de nuevo más tarde.'));
+    console.error('❌ Error en comando de anime:', error.message);
+    console.error('📋 Stack trace:', error.stack);
+    reply(fmt.aviso(`Lo siento, hubo un error: ${error.message}`));
   }
 };
 
