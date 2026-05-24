@@ -7,12 +7,33 @@ const { isAdmin, getUserId } = require('../utils');
 module.exports = {
     asignar: async (sock, m, args, currentUser, config, reply, sender) => {
         if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins pueden usar este comando.'));
-        if (args.length < 2) return reply(fmt.aviso('Uso: !asignar @user Personaje (Fandom)'));
+        if (args.length < 1) return reply(fmt.aviso('Uso: !asignar @user Personaje (Fandom) O !asignar Personaje (Fandom) (para ti mismo)'));
         
-        const targetId = await getUserId(args[0], m, sender);
-        if (!targetId) return reply(fmt.aviso('No se encontró al usuario.'));
+        let targetId = sender;
+        let personajeArgsStart = 0;
+        
+        const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+        const quotedParticipant = m.message?.extendedTextMessage?.contextInfo?.participant;
+        
+        if (mentionedJid) {
+            targetId = mentionedJid;
+            personajeArgsStart = 1;
+        } else if (quotedParticipant && quotedParticipant !== sender) {
+            targetId = quotedParticipant;
+            personajeArgsStart = 0;
+        } else if (args[0] && (args[0].includes('@s.whatsapp.net') || args[0].startsWith('@'))) {
+            const possibleUser = await getUserId(args[0], m, sender);
+            if (possibleUser && possibleUser !== sender) {
+                targetId = possibleUser;
+                personajeArgsStart = 1;
+            }
+        }
 
-        let fullText = args.slice(1).join(' ');
+        if (personajeArgsStart >= args.length) {
+            return reply(fmt.aviso('Debes especificar un personaje. Uso: !asignar @user Personaje (Fandom)'));
+        }
+
+        let fullText = args.slice(personajeArgsStart).join(' ');
         let personaje = fullText;
         let fandom = 'General';
         
@@ -113,7 +134,7 @@ module.exports = {
         const pedidos = await Pedido.find().sort({ fandom: 1 });
         if (pedidos.length === 0) return reply(fmt.aviso('No hay pedidos pendientes.'));
 
-        let text = fmt.header('Lista de Pedidos') + '\n';
+        let text = fmt.header();
         const grouped = {};
         pedidos.forEach(p => {
             if (!grouped[p.fandom]) grouped[p.fandom] = [];
