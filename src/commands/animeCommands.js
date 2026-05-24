@@ -5,44 +5,44 @@ const { getTargetId } = require('../utils');
 const reactionCommands = {
   hug: {
     phrases: [
-      "¡*{autor}* le dio un cálido abrazo a *{objetivo}*! 🤗💕",
-      "¡*{autor}* está abrazando a *{objetivo}*! 🥰",
-      "¡*{autor}* le da un abrazo gigante a *{objetivo}*! 💖"
+      "¡{autor} le dio un cálido abrazo a {objetivo}!",
+      "¡{autor} está abrazando a {objetivo}!",
+      "¡{autor} le da un abrazo gigante a {objetivo}!"
     ]
   },
   slap: {
     phrases: [
-      "¡*{autor}* le dio una tremenda bofetada a *{objetivo}*! 💥👋",
-      "¡*{autor}* cachetea a *{objetivo}* con todas sus fuerzas! 🔥",
-      "¡Bam! *{autor}* le da una cachetada a *{objetivo}*!"
+      "¡{autor} le dio una tremenda bofetada a {objetivo}!",
+      "¡{autor} cachetea a {objetivo} con todas sus fuerzas!",
+      "¡Bam! {autor} le da una cachetada a {objetivo}!"
     ]
   },
   pat: {
     phrases: [
-      "¡*{autor}* está acariciando la cabeza de *{objetivo}*! 🐾",
-      "¡*{autor}* le da unas patitas suaves a *{objetivo}*! ✨",
-      "¡*{autor}* le da palmaditas a *{objetivo}*! 🥰"
+      "¡{autor} está acariciando la cabeza de {objetivo}!",
+      "¡{autor} le da unas patitas suaves a {objetivo}!",
+      "¡{autor} le da palmaditas a {objetivo}!"
     ]
   },
   poke: {
     phrases: [
-      "¡*{autor}* está poking a *{objetivo}*! 👉😆",
-      "¡*{autor}* le da un toque curioso a *{objetivo}*! 🤔",
-      "¡Hey! *{autor}* está poking a *{objetivo}*! 😜"
+      "¡{autor} está poking a {objetivo}!",
+      "¡{autor} le da un toque curioso a {objetivo}!",
+      "¡Hey! {autor} está poking a {objetivo}!"
     ]
   },
   cuddle: {
     phrases: [
-      "¡*{autor}* y *{objetivo}* están acurrucados juntos! 🥰💕",
-      "¡*{autor}* le da un acurrucamiento cálido a *{objetivo}*! 🤗",
-      "¡*{autor}* y *{objetivo}* se abrazan tiernamente! 💖"
+      "¡{autor} y {objetivo} están acurrucados juntos!",
+      "¡{autor} le da un acurrucamiento cálido a {objetivo}!",
+      "¡{autor} y {objetivo} se abrazan tiernamente!"
     ]
   },
   kiss: {
     phrases: [
-      "¡*{autor}* le dio un beso a *{objetivo}*! 💋💕",
-      "¡*{autor}* besa a *{objetivo}* con mucho amor! 😘",
-      "¡Mwah! *{autor}* le da un beso a *{objetivo}*! �"
+      "¡{autor} le dio un beso a {objetivo}!",
+      "¡{autor} besa a {objetivo} con mucho amor!",
+      "¡Mwah! {autor} le da un beso a {objetivo}!"
     ]
   }
 };
@@ -50,8 +50,8 @@ const reactionCommands = {
 const getRandomPhrase = (phrases, author, target) => {
   const randomIndex = Math.floor(Math.random() * phrases.length);
   return phrases[randomIndex]
-    .replace('*{autor}*', fmt.mention(author))
-    .replace('*{objetivo}*', fmt.mention(target));
+    .replace('{autor}', fmt.mention(author))
+    .replace('{objetivo}', fmt.mention(target));
 };
 
 const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
@@ -61,31 +61,27 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
   const targetId = getTargetId(m, sender);
 
   try {
-    console.log('🔍 Obteniendo GIF de nekos.best...');
+    console.log(`🔍 Obteniendo animación para !${command} desde nekos.best...`);
     const response = await axios.get(`https://nekos.best/api/v2/${command}`, { timeout: 10000 });
     const gifUrl = response.data.results[0].url;
 
-    console.log('📥 Descargando GIF desde:', gifUrl);
-    const gifBuffer = await axios.get(gifUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 15000 
-    });
+    const videoUrl = gifUrl.replace('.gif', '.mp4');
 
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
     const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
 
-    console.log('📤 Enviando GIF...');
+    console.log('📤 Enviando video en modo GIF interactivo...');
     
     await sock.sendMessage(m.key.remoteJid, {
-      video: Buffer.from(gifBuffer.data),
+      video: { url: videoUrl },
       gifPlayback: true,
       caption,
       mentions: [sender, targetId]
     }, { quoted: m });
+
   } catch (error) {
     console.error('❌ Error en comando de anime:', error.message);
-    console.error('📋 Stack trace:', error.stack);
-    reply(fmt.aviso(`Lo siento, hubo un error: ${error.message}`));
+    reply(fmt.aviso(`Lo siento, hubo un error al procesar la animación: ${error.message}`));
   }
 };
 
