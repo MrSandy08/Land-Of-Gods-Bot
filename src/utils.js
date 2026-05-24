@@ -9,7 +9,7 @@ const isAdmin = async (m, sock) => {
 };
 
 const getTargetId = (m, sender) => {
-    if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.participant) {
+    if (m.message?.extendedTextMessage?.contextInfo?.participant) {
         return m.message.extendedTextMessage.contextInfo.participant;
     }
     if (m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
