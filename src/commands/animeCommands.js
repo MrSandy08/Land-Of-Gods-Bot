@@ -10,11 +10,11 @@ const reactionCommands = {
       "¡*{autor}* le da un abrazo gigante a *{objetivo}*! 💖"
     ]
   },
-  kiss: {
+  slap: {
     phrases: [
-      "¡*{autor}* le dio un beso a *{objetivo}*! 💋💕",
-      "¡*{autor}* besa a *{objetivo}* con mucho amor! 😘",
-      "¡Mwah! *{autor}* le da un beso a *{objetivo}*! 💖"
+      "¡*{autor}* le dio una tremenda bofetada a *{objetivo}*! 💥👋",
+      "¡*{autor}* cachetea a *{objetivo}* con todas sus fuerzas! 🔥",
+      "¡Bam! *{autor}* le da una cachetada a *{objetivo}*!"
     ]
   },
   pat: {
@@ -22,13 +22,6 @@ const reactionCommands = {
       "¡*{autor}* está acariciando la cabeza de *{objetivo}*! 🐾",
       "¡*{autor}* le da unas patitas suaves a *{objetivo}*! ✨",
       "¡*{autor}* le da palmaditas a *{objetivo}*! 🥰"
-    ]
-  },
-  slap: {
-    phrases: [
-      "¡*{autor}* le dio una tremenda bofetada a *{objetivo}*! 💥👋",
-      "¡*{autor}* cachetea a *{objetivo}* con todas sus fuerzas! 🔥",
-      "¡Bam! *{autor}* le da una cachetada a *{objetivo}*!"
     ]
   },
   poke: {
@@ -45,39 +38,11 @@ const reactionCommands = {
       "¡*{autor}* y *{objetivo}* se abrazan tiernamente! 💖"
     ]
   },
-  cry: {
+  kiss: {
     phrases: [
-      "¡*{autor}* está llorando! 😢😭",
-      "¡*{autor}* no puede parar de llorar! 💧",
-      "¡Oh no! *{autor}* está triste! 😔"
-    ]
-  },
-  happy: {
-    phrases: [
-      "¡*{autor}* está muy feliz! 😄🎉",
-      "¡*{autor}* está sonriendo de oreja a oreja! 😊",
-      "¡Yay! *{autor}* está contento! ✨"
-    ]
-  },
-  wink: {
-    phrases: [
-      "¡*{autor}* le guiña un ojo a *{objetivo}*! 😉",
-      "¡*{autor}* está coqueteando con *{objetivo}*! 😏",
-      "¡Hey! *{autor}* le guiña a *{objetivo}*! 😜"
-    ]
-  },
-  dance: {
-    phrases: [
-      "¡*{autor}* y *{objetivo}* están bailando juntos! 💃🕺🎵",
-      "¡*{autor}* invita a *{objetivo}* a bailar! 🎶",
-      "¡Let's dance! *{autor}* y *{objetivo}* se mueven! 🕺💃"
-    ]
-  },
-  blush: {
-    phrases: [
-      "¡*{autor}* se está sonrojando! 😳💕",
-      "¡*{autor}* tiene las mejillas rojas! 🥰",
-      "¡Oh! *{autor}* se está poniendo colorado! 😊"
+      "¡*{autor}* le dio un beso a *{objetivo}*! 💋💕",
+      "¡*{autor}* besa a *{objetivo}* con mucho amor! 😘",
+      "¡Mwah! *{autor}* le da un beso a *{objetivo}*! �"
     ]
   }
 };
@@ -96,16 +61,23 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
   const targetId = getTargetId(m, sender);
 
   try {
-    const response = await axios.get(`https://api.waifu.pics/sfw/${command}`);
-    const gifUrl = response.data.url;
+    console.log('🔍 Obteniendo GIF de nekos.best...');
+    const response = await axios.get(`https://nekos.best/api/v2/${command}`, { timeout: 10000 });
+    const gifUrl = response.data.results[0].url;
+
+    console.log('📥 Descargando GIF desde:', gifUrl);
+    const gifBuffer = await axios.get(gifUrl, { 
+      responseType: 'arraybuffer',
+      timeout: 15000 
+    });
 
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
     const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
 
-    console.log('📤 Enviando GIF desde URL:', gifUrl);
+    console.log('📤 Enviando GIF...');
     
     await sock.sendMessage(m.key.remoteJid, {
-      video: { url: gifUrl },
+      video: Buffer.from(gifBuffer.data),
       gifPlayback: true,
       caption,
       mentions: [sender, targetId]
