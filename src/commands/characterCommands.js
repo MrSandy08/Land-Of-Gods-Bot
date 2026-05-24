@@ -23,7 +23,7 @@ module.exports = {
         }
 
         const existing = await User.findOne({ personaje: new RegExp(`^${personaje}$`, 'i'), fandom: new RegExp(`^${fandom}$`, 'i') });
-        if (existing) return reply(fmt.aviso(`El personaje *${personaje}* (${fandom}) ya está ocupado por @${existing._id.split('@')[0]}.`));
+        if (existing) return reply(fmt.aviso(`El personaje *${personaje}* (${fandom}) ya está ocupado por ${fmt.mention(existing._id)}.`));
 
         let targetUser = await User.findById(targetId);
         if (!targetUser) targetUser = new User({ _id: targetId });
@@ -32,7 +32,7 @@ module.exports = {
         targetUser.fandom = fandom;
         await targetUser.save();
 
-        reply(fmt.aviso(`Personaje *${personaje}* (${fandom}) asignado a @${targetId.split('@')[0]}.`));
+        reply(fmt.aviso(`Personaje *${personaje}* (${fandom}) asignado a ${fmt.mention(targetId)}.`));
     },
 
     personajes: async (sock, m, args, currentUser, config, reply) => {
@@ -85,10 +85,12 @@ module.exports = {
         
         let text = fmt.header('Sin Personaje') + '\n';
         text += fmt.listSection('USUARIOS');
-        users.forEach((u, i) => {
-            text += fmt.listItem(`@${u._id.split('@')[0]}`);
+        const mentions = [];
+        users.forEach((u) => {
+            text += fmt.listItem(fmt.mention(u._id));
+            mentions.push(u._id);
         });
-        reply(text);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     },
 
     pedir: async (sock, m, args, currentUser, config, reply, sender) => {

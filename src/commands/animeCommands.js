@@ -93,14 +93,13 @@ const animeReactionHandler = async (command, sock, m, args, sender, reply) => {
   try {
     const response = await axios.get(`https://nekos.best/api/v2/${command}`);
     const gifUrl = response.data.results[0].url;
-
-    const gifBuffer = await axios.get(gifUrl, { responseType: 'arraybuffer' });
+    const videoUrl = gifUrl.replace('.gif', '.mp4');
 
     const reactionText = getRandomPhrase(config.phrases, sender, targetId);
     const caption = fmt.header(`Reacción: ${command.toUpperCase()}`) + '\n\n' + fmt.aviso(reactionText);
 
     await sock.sendMessage(m.key.remoteJid, {
-      video: Buffer.from(gifBuffer.data),
+      video: { url: videoUrl },
       gifPlayback: true,
       caption,
       mentions: [sender, targetId]

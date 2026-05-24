@@ -8,20 +8,24 @@ module.exports = {
         const top = await User.find().sort({ mensajes: -1 }).limit(limit);
         let text = fmt.header(`Top ${limit} Mensajes`) + '\n';
         text += fmt.listSection('RANKING');
-        top.forEach((u, i) => {
-            text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.mensajes} mjs`);
+        const mentions = [];
+        top.forEach((u) => {
+            text += fmt.listItem(`${fmt.mention(u._id)} - ${u.mensajes} mjs`);
+            mentions.push(u._id);
         });
-        reply(text);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     },
 
     low: async (sock, m, args, currentUser, config, reply) => {
         const low = await User.find().sort({ mensajes: 1 }).limit(10);
         let text = fmt.header('Low 10 Mensajes') + '\n';
         text += fmt.listSection('RANKING');
-        low.forEach((u, i) => {
-            text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.mensajes} mjs`);
+        const mentions = [];
+        low.forEach((u) => {
+            text += fmt.listItem(`${fmt.mention(u._id)} - ${u.mensajes} mjs`);
+            mentions.push(u._id);
         });
-        reply(text);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     },
 
     inactivos: async (sock, m, args, currentUser, config, reply) => {
@@ -36,10 +40,12 @@ module.exports = {
 
         let text = fmt.header(`Inactivos (${days}+ días)`) + '\n';
         text += fmt.listSection('USUARIOS');
-        inactivos.forEach((u, i) => {
+        const mentions = [];
+        inactivos.forEach((u) => {
             const d = moment().diff(moment(u.lastSeen), 'days');
-            text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.personaje}`) + `       𝄄   _hace ${d} dias sin hablar_\n\n`;
+            text += fmt.listItem(`${fmt.mention(u._id)} - ${u.personaje}`) + `       𝄄   _hace ${d} dias sin hablar_\n\n`;
+            mentions.push(u._id);
         });
-        reply(text);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     }
 };

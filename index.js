@@ -173,13 +173,13 @@ async function startBot() {
             await user.save();
 
             const text = fmt.header('Notificación de Salida') + '\n' +
-                         fmt.aviso(`El usuario @${num.split('@')[0]} ha dejado el grupo/comunidad.\n\nEl personaje *${char}* (${fandom}) queda *LIBRE*.`);
+                         fmt.aviso(`El usuario ${fmt.mention(num)} ha dejado el grupo/comunidad.\n\nEl personaje *${char}* (${fandom}) queda *LIBRE*.`);
             
             await sock.sendMessage(id, { text, mentions: [num] });
             
             const groups = await Group.find({ _id: { $ne: id } });
             for (let g of groups) {
-              await sock.sendMessage(g._id, { text }).catch(() => null);
+              await sock.sendMessage(g._id, { text, mentions: [num] }).catch(() => null);
             }
           }
         }

@@ -61,6 +61,12 @@ const progressBar = (porcentaje, tamano = 10) => {
   return `[${barra}] ${porcentaje}%`;
 };
 
+const mention = (jid) => {
+  if (!jid) return '';
+  const num = jid.split('@')[0];
+  return `@${num}`;
+};
+
 module.exports = {
   header,
   category,
@@ -72,5 +78,6 @@ module.exports = {
   infoHeader,
   infoField,
   renderBar,
-  progressBar
+  progressBar,
+  mention
 };
