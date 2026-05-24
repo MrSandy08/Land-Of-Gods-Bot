@@ -2,6 +2,7 @@ const {
   default: makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  initAuthCreds,
   Browsers,
   jidDecode
 } = require('@whiskeysockets/baileys');
@@ -14,7 +15,6 @@ const User = require('./src/models/User');
 const Config = require('./src/models/Config');
 const Group = require('./src/models/Group');
 const handleCommand = require('./src/commands');
-const { useMongoAuthState, clearCreds } = require('./src/mongoAuth');
 const moment = require('moment');
 const fmt = require('./format');
 
@@ -61,14 +61,41 @@ async function startBot() {
     pairingCode = "Error de base de datos. Revisa MONGO_URI.";
   }
 
-  const { state, saveCreds } = await useMongoAuthState('mini-beyonder-session');
+  console.log("Iniciando bot en modo Volátil (Sin guardado de sesión)...");
+
+  // 1. Creamos credenciales completamente nuevas y vacías en memoria
+  const creds = initAuthCreds();
+  
+  // 2. Estructuramos el objeto auth sin persistencia
+  const keysData = {};
+  const auth = {
+    creds: creds,
+    keys: {
+      get: (type, ids) => {
+        const key = {};
+        ids.forEach(id => {
+          const k = keysData[`${type}-${id}`];
+          if (k) key[id] = k;
+        });
+        return key;
+      },
+      set: (type, id, value) => {
+        if (value) {
+          keysData[`${type}-${id}`] = value;
+        } else {
+          delete keysData[`${type}-${id}`];
+        }
+      }
+    }
+  };
+
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
     logger: P({ level: 'silent' }),
     printQRInTerminal: false,
-    auth: state,
+    auth: auth,
     browser: ["Ubuntu", "Chrome", "20.0.04"],
     getMessage: async (key) => {
       return { conversation: 'sua-bot' };
@@ -77,8 +104,6 @@ async function startBot() {
 
   // Programar job diario (cada 24h)
   setInterval(() => dailyJob(sock), 24 * 60 * 60 * 1000);
-
-  sock.ev.on('creds.update', saveCreds);
 
   let pairingCodeRequested = false;
   
@@ -95,11 +120,13 @@ async function startBot() {
       if (phoneNumber) {
         try {
           console.log('Solicitando pairing code para número:', phoneNumber);
-          // Esperar un poco para asegurarse que el socket está listo
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Esperar un poco para evitar error 503 / Stream Error
+          await new Promise(resolve => setTimeout(resolve, 3000));
           let code = await sock.requestPairingCode(phoneNumber);
           pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
-          console.log(`✅ CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+          console.log(`\n====================================`);
+          console.log(`TU CÓDIGO DE VINCULACIÓN: ${pairingCode}`);
+          console.log(`====================================\n`);
           console.log('⚠️ Por favor, usa este código en WhatsApp en los próximos 60 segundos...');
         } catch (err) {
           console.error("❌ Error solicitando pairing code:", err);
@@ -234,8 +261,6 @@ async function startBot() {
 
         if (recentMessages.length > config.antispam.limit) {
           // Detectado spam
-          // Opcional: silenciar o advertir. El usuario pidió que el sistema antispam detecte.
-          // Por ahora solo ignoramos el comando si es spam.
           return;
         }
       }
