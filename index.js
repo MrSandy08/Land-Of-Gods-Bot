@@ -207,6 +207,7 @@ async function startBot() {
       const prefix = '!';
       const isCommand = body.startsWith(prefix);
 
+      // 1. Rastreo de Actividad y Base de Datos
       let user = await User.findById(sender);
       if (!user) {
         user = new User({ _id: sender });
@@ -215,6 +216,33 @@ async function startBot() {
       user.lastSeen = new Date();
       await user.save();
 
+      // =========================================================================
+      // 🎨 DECORACIÓN DE LOGS EN CONSOLA (ESTÉTICO & BONITO)
+      // =========================================================================
+      const timestamp = moment();
+      const fecha = timestamp.format('DD/MM/YYYY');
+      const hora = timestamp.format('hh:mm:ss a');
+      const numeroLimpio = sender.split('@')[0];
+      const personaje = user.personaje ? user.personaje : 'Ninguno 👤';
+      const fandom = user.fandom ? `(${user.fandom})` : '';
+
+      // Definición de colores ANSI nativos
+      const reset = "\x1b[0m";
+      const cyan = "\x1b[36m";
+      const magenta = "\x1b[35m";
+      const verde = "\x1b[32m";
+      const amarillo = "\x1b[33m";
+      const gris = "\x1b[90m";
+
+      console.log(`${gris}┌────────────────────────────────────────────────────────────┐${reset}`);
+      console.log(` ${cyan}📅 Fecha:${reset} ${fecha}   ${cyan}⏰ Hora:${reset} ${hora}`);
+      console.log(` ${magenta}👤 User:${reset}  +${numeroLimpio}`);
+      console.log(` ${verde}🎭 Char:${reset}  ${personaje} ${gris}${fandom}${reset}`);
+      console.log(` ${amarillo}💬 Msg:${reset}   ${body.substring(0, 50)}${body.length > 50 ? '...' : ''}`);
+      console.log(`${gris}└────────────────────────────────────────────────────────────┘${reset}`);
+      // =========================================================================
+
+      // 2. Control Anti-spam
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
       if (config.antispam.enabled) {
         const now = Date.now();
@@ -229,6 +257,7 @@ async function startBot() {
         }
       }
 
+      // 3. Manejo de Comandos
       if (isCommand) {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
@@ -236,7 +265,7 @@ async function startBot() {
       }
 
     } catch (err) {
-      console.error('Error en messages.upsert:', err);
+      console.error('❌ Error en messages.upsert:', err);
     }
   });
 }
