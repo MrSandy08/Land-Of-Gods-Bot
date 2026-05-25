@@ -17,6 +17,15 @@ module.exports = {
         text += fmt.cmdLine('📉', 'low', 'Usuarios con menos mensajes');
         text += fmt.cmdLine('💤', 'inactivos', 'Ver usuarios inactivos');
 
+        text += fmt.category('Economía');
+        text += fmt.cmdLine('💰', 'dinero', 'Ver tu saldo o el de alguien');
+        text += fmt.cmdLine('🎁', 'daily', 'Reclamar tu bono diario');
+        text += fmt.cmdLine('💼', 'work', 'Trabajar para ganar dinero');
+        text += fmt.cmdLine('🏦', 'depositar', 'Depositar dinero en el banco');
+        text += fmt.cmdLine('💸', 'retirar', 'Retirar dinero del banco');
+        text += fmt.cmdLine('💱', 'transferir', 'Transferir dinero a alguien');
+        text += fmt.cmdLine('🏅', 'ricos', 'Ver el top de usuarios más ricos');
+
         text += fmt.category('Reacciones');
         text += fmt.cmdLine('🤗', 'hug', 'Dar un abrazo a alguien');
         text += fmt.cmdLine('👋', 'slap', 'Dar una bofetada');
