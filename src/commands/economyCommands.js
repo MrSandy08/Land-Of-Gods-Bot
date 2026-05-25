@@ -59,10 +59,10 @@ const economyCommands = {
       fmt.aviso(`💰 *DINERO DE ${targetId === sender ? 'TI' : '@' + targetId.split('@')[0]}*\n\n` +
         `💵 Cartera: *${formatNumber(user.money)}* monedas\n` +
         `🏦 Banco: *${formatNumber(user.bank)}* monedas\n` +
-        `📊 Total: *${formatNumber(total)}* monedas`;
+        `📊 Total: *${formatNumber(total)}* monedas`);
     
     if (jail.active) {
-      texto += `\n\n🚔 *EN PRISIÓN*\nTiempo restante: *${jail.texto}`;
+      texto += `\n\n🚔 *EN PRISIÓN*\nTiempo restante: *${jail.texto}*`;
     }
     
     await sock.sendMessage(m.key.remoteJid, { text: texto, mentions: [targetId] }, { quoted: m });
@@ -72,7 +72,7 @@ const economyCommands = {
     const user = currentUser;
     const jail = checkJail(user);
     if (jail.active) {
-      return reply(fmt.aviso(`Estás en prisión. No puedes reclamar tu bono diario.\n       𝄄   _Tiempo restante: ${jail.texto}_`);
+      return reply(fmt.aviso(`Estás en prisión. No puedes reclamar tu bono diario.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
     const ahora = new Date();
@@ -351,7 +351,7 @@ const economyCommands = {
 
     const input = args[0]?.toLowerCase();
     
-    if (!input) return reply(fmt.aviso('Escribe la cantidad que deseas retirar o usa *all*.\n       𝄄   _Ej: !retirar 500_ | _!retirar all_')));
+    if (!input) return reply(fmt.aviso('Escribe la cantidad que deseas retirar o usa *all*.\n       𝄄   _Ej: !retirar 500_ | _!retirar all_'));
 
     let monto = 0;
     if (input === 'all') {

@@ -214,7 +214,6 @@ async function startBot() {
       }
       user.mensajes += 1;
       user.lastSeen = new Date();
-      await user.save();
 
       // =========================================================================
       // 🎨 DECORACIÓN DE LOGS EN CONSOLA (ESTÉTICO & BONITO)
@@ -262,6 +261,8 @@ async function startBot() {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
         await handleCommand(sock, m, command, args, user, config);
+      } else {
+        await user.save();
       }
 
     } catch (err) {
