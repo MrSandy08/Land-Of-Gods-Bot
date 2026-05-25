@@ -215,30 +215,6 @@ async function startBot() {
       user.mensajes += 1;
       user.lastSeen = new Date();
 
-      // =========================================================================
-      // 🎨 LOGS EN CONSOLA (SIN MENSAJES)
-      // =========================================================================
-      const timestamp = moment();
-      const fecha = timestamp.format('DD/MM/YYYY');
-      const hora = timestamp.format('hh:mm:ss a');
-      const numeroLimpio = sender.split('@')[0];
-      const personaje = user.personaje ? user.personaje : 'Ninguno 👤';
-      const fandom = user.fandom ? `(${user.fandom})` : '';
-
-      // Definición de colores ANSI nativos
-      const reset = "\x1b[0m";
-      const cyan = "\x1b[36m";
-      const magenta = "\x1b[35m";
-      const verde = "\x1b[32m";
-      const gris = "\x1b[90m";
-
-      console.log(`${gris}┌────────────────────────────────────────────────────────────┐${reset}`);
-      console.log(` ${cyan}📅 Fecha:${reset} ${fecha}   ${cyan}⏰ Hora:${reset} ${hora}`);
-      console.log(` ${magenta}👤 User:${reset}  +${numeroLimpio}`);
-      console.log(` ${verde}🎭 Char:${reset}  ${personaje} ${gris}${fandom}${reset}`);
-      console.log(`${gris}└────────────────────────────────────────────────────────────┘${reset}`);
-      // =========================================================================
-
       // 2. Control Anti-spam
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
       if (config.antispam.enabled) {
@@ -258,7 +234,7 @@ async function startBot() {
       if (isCommand) {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
-        await handleCommand(sock, m, command, args, user, config);
+        await handleCommand(sock, m, command, args, user, config, remoteJid, sender);
       } else {
         await user.save();
       }
