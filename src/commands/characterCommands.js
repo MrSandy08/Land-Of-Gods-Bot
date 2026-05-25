@@ -1,11 +1,12 @@
 const User = require('../models/User');
+const UserGroup = require('../models/UserGroup');
 const Pedido = require('../models/Pedido');
 const moment = require('moment');
 const fmt = require('../../format');
 const { isAdmin, getUserId } = require('../utils');
 
 module.exports = {
-    asignar: async (sock, m, args, currentUser, config, reply, sender) => {
+    asignar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
         if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins pueden usar este comando.'));
         if (args.length < 1) return reply(fmt.aviso('Uso: !asignar @user Personaje (Fandom) O !asignar Personaje (Fandom) (para ti mismo)'));
         
@@ -43,22 +44,23 @@ module.exports = {
             personaje = fullText.replace(fandomMatch[0], '').trim();
         }
 
-        const existing = await User.findOne({ personaje: new RegExp(`^${personaje}$`, 'i'), fandom: new RegExp(`^${fandom}$`, 'i') });
-        if (existing) return reply(fmt.aviso(`El personaje *${personaje}* (${fandom}) ya está ocupado por ${fmt.mention(existing._id)}.`));
+        const existing = await UserGroup.findOne({ groupId, personaje: new RegExp(`^${personaje}$`, 'i'), fandom: new RegExp(`^${fandom}$`, 'i') });
+        if (existing) {
+            const existingUser = await User.findById(existing.userId);
+            return reply(fmt.aviso(`El personaje *${personaje}* (${fandom}) ya está ocupado por ${fmt.mention(existing.userId)}.`));
+        }
 
-        let targetUser = await User.findById(targetId);
-        if (!targetUser) targetUser = new User({ _id: targetId });
-        
-        targetUser.personaje = personaje;
-        targetUser.fandom = fandom;
-        await targetUser.save();
+        const targetUserGroup = await UserGroup.getOrCreate(targetId, groupId);
+        targetUserGroup.personaje = personaje;
+        targetUserGroup.fandom = fandom;
+        await targetUserGroup.save();
 
         reply(fmt.aviso(`Personaje *${personaje}* (${fandom}) asignado a ${fmt.mention(targetId)}.`));
     },
 
-    personajes: async (sock, m, args, currentUser, config, reply) => {
-        const users = await User.find({ personaje: { $ne: null } }).sort({ fandom: 1 });
-        if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados.'));
+    personajes: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
+        const users = await UserGroup.find({ groupId, personaje: { $ne: null } }).sort({ fandom: 1 });
+        if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo.'));
 
         let text = fmt.header();
         const grouped = {};
@@ -70,17 +72,18 @@ module.exports = {
         for (const fandom in grouped) {
             text += fmt.listSection(fandom.toUpperCase());
             grouped[fandom].forEach((u, i) => {
-                text += fmt.listItem(`${u.personaje} - @${u._id.split('@')[0]}`);
+                text += fmt.listItem(`${u.personaje} - @${u.userId.split('@')[0]}`);
             });
             text += '\n';
         }
-        reply(text);
+        const mentions = users.map(u => u.userId);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     },
 
-    perfil: async (sock, m, args, currentUser, config, reply, sender) => {
+    perfil: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         const targetId = (args.length > 0) ? await getUserId(args[0], m, sender) : sender;
-        const u = await User.findById(targetId);
-        if (!u) return reply(fmt.aviso('Usuario no encontrado.'));
+        const u = await UserGroup.getOrCreate(targetId, groupId);
+        const user = await User.findById(targetId);
 
         const diff = moment().diff(moment(u.lastSeen), 'days');
         let status = 'Activo';
@@ -97,19 +100,19 @@ module.exports = {
         text += fmt.infoField('Última vez', moment(u.lastSeen).fromNow());
         
         text += '\n\n' + fmt.aviso('Información actualizada.');
-        reply(text);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions: [targetId] }, { quoted: m });
     },
 
-    sinpersonaje: async (sock, m, args, currentUser, config, reply) => {
-        const users = await User.find({ personaje: null });
-        if (users.length === 0) return reply(fmt.aviso('Todos tienen personaje.'));
+    sinpersonaje: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
+        const users = await UserGroup.find({ groupId, personaje: null });
+        if (users.length === 0) return reply(fmt.aviso('Todos tienen personaje en este grupo.'));
         
         let text = fmt.header();
         text += fmt.listSection('USUARIOS');
         const mentions = [];
         users.forEach((u) => {
-            text += fmt.listItem(fmt.mention(u._id));
-            mentions.push(u._id);
+            text += fmt.listItem(fmt.mention(u.userId));
+            mentions.push(u.userId);
         });
         await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     },

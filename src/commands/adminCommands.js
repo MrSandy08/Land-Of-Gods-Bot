@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const UserGroup = require('../models/UserGroup');
 const Pedido = require('../models/Pedido');
 const Sugerencia = require('../models/Sugerencia');
 const Config = require('../models/Config');
@@ -22,7 +23,7 @@ module.exports = {
         reply(fmt.aviso('Uso: !antispam on/off O !antispam [mjs] [seg]'));
     },
 
-    adv: async (sock, m, args, currentUser, config, reply, sender) => {
+    adv: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins.'));
         if (args.length < 2) return reply(fmt.aviso('Uso: !adv @user/personaje [razon]'));
         
@@ -30,7 +31,7 @@ module.exports = {
         if (!targetId) return reply(fmt.aviso('No se encontró al usuario.'));
         
         const razon = args.slice(1).join(' ');
-        const u = await User.findById(targetId);
+        const u = await UserGroup.getOrCreate(targetId, groupId);
         u.advertencias.push({ razon, admin: sender });
         await u.save();
 
@@ -41,32 +42,33 @@ module.exports = {
         }
     },
 
-    advertencias: async (sock, m, args, currentUser, config, reply) => {
-        const users = await User.find({ 'advertencias.0': { $exists: true } }).sort({ fandom: 1 });
-        if (users.length === 0) return reply(fmt.aviso('No hay advertencias.'));
+    advertencias: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
+        const users = await UserGroup.find({ groupId, 'advertencias.0': { $exists: true } }).sort({ fandom: 1 });
+        if (users.length === 0) return reply(fmt.aviso('No hay advertencias en este grupo.'));
 
         let text = fmt.header();
         const grouped = {};
-        users.forEach(u => {
-            if (!grouped[u.fandom || 'Sin Fandom']) grouped[u.fandom || 'Sin Fandom'] = [];
-            grouped[u.fandom || 'Sin Fandom'].push(u);
+        users.forEach(ug => {
+            if (!grouped[ug.fandom || 'Sin Fandom']) grouped[ug.fandom || 'Sin Fandom'] = [];
+            grouped[ug.fandom || 'Sin Fandom'].push(ug);
         });
 
         let index = 1;
         for (const fandom in grouped) {
             text += fmt.listSection(fandom.toUpperCase());
-            grouped[fandom].forEach(u => {
-                text += fmt.listItem(`@${u._id.split('@')[0]} - ${u.personaje} : ${u.advertencias.length}/${config.maxAdvertencias}`);
-                u.advertencias.forEach(adv => {
+            grouped[fandom].forEach(ug => {
+                text += fmt.listItem(`@${ug.userId.split('@')[0]} - ${ug.personaje} : ${ug.advertencias.length}/${config.maxAdvertencias}`);
+                ug.advertencias.forEach(adv => {
                     text += `       𝄄   _- ${adv.razon}_\n`;
                 });
                 text += '\n';
             });
         }
-        reply(text);
+        const mentions = users.map(ug => ug.userId);
+        await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
     },
 
-    quitar: async (sock, m, args, currentUser, config, reply) => {
+    quitar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins.'));
         if (!args[0]?.startsWith('#')) return reply(fmt.aviso('Uso: !quitar #numero'));
         const num = parseInt(args[0].slice(1)) - 1;
@@ -88,24 +90,24 @@ module.exports = {
         
         currentOffset += suges.length;
 
-        const excusas = await User.find({ 'excusa.activa': true });
+        const excusas = await UserGroup.find({ groupId, 'excusa.activa': true });
         if (num < currentOffset + excusas.length) {
             const eIdx = num - currentOffset;
-            const u = excusas[eIdx];
-            u.excusa.activa = false;
-            await u.save();
-            return reply(fmt.aviso(`Excusa #${num + 1} (de ${u.personaje}) eliminada.`));
+            const ug = excusas[eIdx];
+            ug.excusa.activa = false;
+            await ug.save();
+            return reply(fmt.aviso(`Excusa #${num + 1} (de ${ug.personaje}) eliminada.`));
         }
 
         currentOffset += excusas.length;
 
-        const usersWithAdv = await User.find({ 'advertencias.0': { $exists: true } }).sort({ fandom: 1 });
+        const usersWithAdv = await UserGroup.find({ groupId, 'advertencias.0': { $exists: true } }).sort({ fandom: 1 });
         if (num < currentOffset + usersWithAdv.length) {
             const uIdx = num - currentOffset;
-            const u = usersWithAdv[uIdx];
-            u.advertencias.pop(); 
-            await u.save();
-            return reply(fmt.aviso(`Advertencia de @${u._id.split('@')[0]} eliminada.`));
+            const ug = usersWithAdv[uIdx];
+            ug.advertencias.pop(); 
+            await ug.save();
+            return reply(fmt.aviso(`Advertencia de @${ug.userId.split('@')[0]} eliminada.`));
         }
 
         reply(fmt.aviso('No se encontró el elemento con ese número.'));
