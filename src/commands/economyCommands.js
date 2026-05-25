@@ -10,7 +10,7 @@ const MS_EN_MINUTO = 60 * 1000;
 const formatNumber = (num) => num.toLocaleString();
 
 const checkCooldown = (user, cooldownName) => {
-  if (!user.cooldowns) return { active: false };
+  if (!user.cooldowns) user.cooldowns = {};
   const cooldownDate = user.cooldowns[cooldownName];
   if (!cooldownDate) return { active: false };
   
@@ -227,7 +227,7 @@ const economyCommands = {
     }
 
     if (targetUser.money === 0) {
-      return reply(fmt.aviso('El objetivo no tiene dinero en la cartera.¡Debería depositarlo en el banco!')));
+      return reply(fmt.aviso('El objetivo no tiene dinero en la cartera.¡Debería depositarlo en el banco!'));
     }
 
     const resultado = Math.random();
@@ -381,7 +381,7 @@ const economyCommands = {
       .limit(10);
 
     if (!top10.length) {
-      return reply(fmt.aviso('No hay usuarios con dinero registrado todavía. 💸')));
+      return reply(fmt.aviso('No hay usuarios con dinero registrado todavía. 💸'));
     }
 
     let txt = fmt.header() + '\n\n';
