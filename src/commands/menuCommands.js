@@ -23,6 +23,7 @@ module.exports = {
         text += fmt.cmdLine('💼', 'work', 'Trabajar (con probabilidades)');
         text += fmt.cmdLine('⛏️', 'minar', 'Minar para ganar más dinero');
         text += fmt.cmdLine('🎣', 'pescar', 'Pescar para ganar dinero');
+        text += fmt.cmdLine('💋', 'prostituirse', 'Prostituirte (riesgo de ITS)');
         text += fmt.cmdLine('😈', 'robar', 'Robar a alguien (riesgo de prisión)');
         text += fmt.cmdLine('🏦', 'atracar', 'Atracar el banco (alto riesgo)');
         text += fmt.cmdLine('🏦', 'depositar', 'Depositar dinero en el banco');

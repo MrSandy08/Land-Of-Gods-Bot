@@ -65,6 +65,10 @@ const economyCommands = {
       texto += `\n\n🚔 *EN PRISIÓN*\nTiempo restante: *${jail.texto}*`;
     }
     
+    if (user.its) {
+      texto += `\n\n⚠️ *TIENES ITS*\nEnfermedad: *${user.its}*`;
+    }
+    
     await sock.sendMessage(m.key.remoteJid, { text: texto, mentions: [targetId] }, { quoted: m });
   },
 
@@ -197,6 +201,37 @@ const economyCommands = {
       await user.save();
       
       reply(fmt.aviso(`🎣 *PESCA FALLIDA*\n\nLos peces se han escapado. Vuelve a intentar en un rato.`));
+    }
+  },
+
+  prostituirse: async (sock, m, args, currentUser, config, reply, sender) => {
+    const user = currentUser;
+    const jail = checkJail(user);
+    if (jail.active) {
+      return reply(fmt.aviso(`Estás en prisión. No puedes prostituirte.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
+    }
+
+    const cooldown = checkCooldown(user, 'prostituirse');
+    if (cooldown.active) {
+      return reply(fmt.aviso(`Estás cansado/a. Descansa un rato.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
+    }
+
+    const ganancia = Math.floor(Math.random() * 501) + 300;
+    user.money += ganancia;
+    user.cooldowns.prostituirse = new Date(Date.now() + 15 * MS_EN_MINUTO);
+
+    const itsProbability = Math.random();
+    if (itsProbability < 0.15) {
+      const itsList = ['VIH', 'SIDA', 'Sífilis', 'Herpes'];
+      const its = itsList[Math.floor(Math.random() * itsList.length)];
+      user.its = its;
+      await user.save();
+      
+      reply(fmt.aviso(`💋 *SERVICIO COMPLETADO*\n\nHas ganado *${formatNumber(ganancia)}* monedas, pero...\n\n⚠️ *¡OH NO!*\n¡Te has contagiado de *${its}*!\n       𝄄   _Tu nuevo saldo: ${formatNumber(user.money)}_`));
+    } else {
+      await user.save();
+      
+      reply(fmt.aviso(`💋 *SERVICIO COMPLETADO*\n\nHas ganado *${formatNumber(ganancia)}* monedas sin problemas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(user.money)}_`));
     }
   },
 
@@ -461,5 +496,7 @@ economyCommands.fish = economyCommands.pescar;
 economyCommands.steal = economyCommands.robar;
 economyCommands.heist = economyCommands.atracar;
 economyCommands.bail = economyCommands.fianza;
+economyCommands.prostituir = economyCommands.prostituirse;
+economyCommands.slut = economyCommands.prostituirse;
 
 module.exports = economyCommands;

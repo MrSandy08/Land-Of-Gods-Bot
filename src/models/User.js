@@ -31,12 +31,16 @@ const UserSchema = new mongoose.Schema({
     extorsionar: { type: Date, default: null },
     suerte: { type: Date, default: null },
     crimen: { type: Date, default: null },
-    robar: { type: Date, default: null }
+    robar: { type: Date, default: null },
+    prostituirse: { type: Date, default: null }
   },
   isJailed: { type: Boolean, default: false },
   jailUntil: { type: Date, default: null },
   dailyStreak: { type: Number, default: 0 },
-  lastDaily: { type: Date, default: null }
+  lastDaily: { type: Date, default: null },
+  
+  // ────────────── SISTEMA DE ITS ──────────────
+  its: { type: String, default: null }
 });
 
 module.exports = mongoose.model('User', UserSchema);
