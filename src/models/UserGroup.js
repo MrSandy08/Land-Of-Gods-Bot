@@ -52,7 +52,10 @@ const UserGroupSchema = new mongoose.Schema({
   lastDaily: { type: Date, default: null },
   
   // ────────────── SISTEMA DE ITS ──────────────
-  its: { type: String, default: null }
+  its: { type: String, default: null },
+  
+  // ────────────── SISTEMA DE FIANZA INCREMENTAL ──────────────
+  jailCount: { type: Number, default: 0 }
 });
 
 // Método para obtener o crear el UserGroup

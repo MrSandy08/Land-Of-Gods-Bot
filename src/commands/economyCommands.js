@@ -7,6 +7,7 @@ const moment = require('moment');
 const MS_EN_DIA = 24 * 60 * 60 * 1000;
 const MS_EN_HORA = 60 * 60 * 1000;
 const MS_EN_MINUTO = 60 * 1000;
+const MS_EN_30_SEGUNDOS = 30 * 1000;
 
 const formatNumber = (num) => num.toLocaleString();
 
@@ -105,7 +106,7 @@ const economyCommands = {
 
     userGroup.money += ganancia;
     userGroup.lastDaily = ahora;
-    userGroup.cooldowns.daily = new Date(ahora.getTime() + MS_EN_DIA);
+    userGroup.cooldowns.daily = new Date(ahora.getTime() + MS_EN_MINUTO);
     await userGroup.save();
 
     reply(fmt.aviso(`🎁 *BONO DIARIO*\n\n¡Has reclamado tu bono de *${formatNumber(ganancia)}* monedas!${msgStreak}\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
@@ -127,29 +128,29 @@ const economyCommands = {
     if (resultado < 0.70) {
       const ganancia = Math.floor(Math.random() * 401) + 100;
       userGroup.money += ganancia;
-      userGroup.cooldowns.work = new Date(Date.now() + 2 * MS_EN_MINUTO);
+      userGroup.cooldowns.work = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
       reply(fmt.aviso(`💼 *TRABAJO EXITOSO*\n\nHas trabajado duro hoy y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else if (resultado < 0.85) {
       const ascenso = Math.floor(Math.random() * 201) + 300;
       userGroup.money += ascenso;
-      userGroup.cooldowns.work = new Date(Date.now() + 1 * MS_EN_MINUTO);
+      userGroup.cooldowns.work = new Date(Date.now() + MS_EN_30_SEGUNDOS);
       await userGroup.save();
       
       reply(fmt.aviso(`📈 *¡ASCIENSO!*\n\nTu jefe te ha notado tu esfuerzo. Ganaste *${formatNumber(ascenso)}* monedas extra.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else if (resultado < 0.95) {
       const descenso = Math.floor(Math.random() * 100) + 50;
       userGroup.money = Math.max(0, userGroup.money - descenso);
-      userGroup.cooldowns.work = new Date(Date.now() + 5 * MS_EN_MINUTO);
+      userGroup.cooldowns.work = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
       reply(fmt.aviso(`📉 *DESCIENSO*\n\nTe has equivocado en el trabajo. Perdiste *${formatNumber(descenso)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      userGroup.cooldowns.work = new Date(Date.now() + 10 * MS_EN_MINUTO);
+      userGroup.cooldowns.work = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
-      reply(fmt.aviso(`⚠️ *DESPIDO*\n\n¡Cometiste un error grave en el trabajo y te han despedido!\n       𝄄   _No puedes trabajar por los próximos 10 minutos._`));
+      reply(fmt.aviso(`⚠️ *DESPIDO*\n\n¡Cometiste un error grave en el trabajo y te han despedido!\n       𝄄   _No puedes trabajar por los próximos 1 minuto._`));
     }
   },
 
@@ -166,7 +167,7 @@ const economyCommands = {
 
     const ganancia = Math.floor(Math.random() * 801) + 200;
     userGroup.money += ganancia;
-    userGroup.cooldowns.minar = new Date(Date.now() + 5 * MS_EN_MINUTO);
+    userGroup.cooldowns.minar = new Date(Date.now() + MS_EN_MINUTO);
     await userGroup.save();
     
     reply(fmt.aviso(`⛏️ *MINERÍA EXITOSA*\n\nHas encontrado una veta rica y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
@@ -187,12 +188,12 @@ const economyCommands = {
     if (resultado < 0.80) {
       const ganancia = Math.floor(Math.random() * 301) + 50;
       userGroup.money += ganancia;
-      userGroup.cooldowns.pescar = new Date(Date.now() + 3 * MS_EN_MINUTO);
+      userGroup.cooldowns.pescar = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
       reply(fmt.aviso(`🎣 *PESCA EXITOSA*\n\nHas pescado un gran pez y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      userGroup.cooldowns.pescar = new Date(Date.now() + 1 * MS_EN_MINUTO);
+      userGroup.cooldowns.pescar = new Date(Date.now() + MS_EN_30_SEGUNDOS);
       await userGroup.save();
       
       reply(fmt.aviso(`🎣 *PESCA FALLIDA*\n\nLos peces se han escapado. Vuelve a intentar en un rato.`));
@@ -212,7 +213,7 @@ const economyCommands = {
 
     const ganancia = Math.floor(Math.random() * 501) + 300;
     userGroup.money += ganancia;
-    userGroup.cooldowns.prostituirse = new Date(Date.now() + 15 * MS_EN_MINUTO);
+    userGroup.cooldowns.prostituirse = new Date(Date.now() + MS_EN_MINUTO);
 
     const itsProbability = Math.random();
     if (itsProbability < 0.15) {
@@ -262,7 +263,7 @@ const economyCommands = {
       const montoRobado = Math.floor(targetUserGroup.money * 0.5);
       targetUserGroup.money -= montoRobado;
       userGroup.money += montoRobado;
-      userGroup.cooldowns.robar = new Date(Date.now() + 10 * MS_EN_MINUTO);
+      userGroup.cooldowns.robar = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       await targetUserGroup.save();
       
@@ -271,11 +272,12 @@ const economyCommands = {
       const multa = Math.floor(userGroup.money * 0.3);
       userGroup.money = Math.max(0, userGroup.money - multa);
       userGroup.isJailed = true;
-      userGroup.jailUntil = new Date(Date.now() + 2 * MS_EN_HORA);
-      userGroup.cooldowns.robar = new Date(Date.now() + 30 * MS_EN_MINUTO);
+      userGroup.jailCount = (userGroup.jailCount || 0) + 1;
+      userGroup.jailUntil = new Date(Date.now() + 2 * MS_EN_MINUTO);
+      userGroup.cooldowns.robar = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
-      reply(fmt.aviso(`🚔 *¡ATRAPADO!*\n\n¡Has sido atrapado robando!\n       𝄄   _Pagaste una multa de ${formatNumber(multa)} monedas y estás en prisión por 2 horas._`));
+      reply(fmt.aviso(`🚔 *¡ATRAPADO!*\n\n¡Has sido atrapado robando!\n       𝄄   _Pagaste una multa de ${formatNumber(multa)} monedas y estás en prisión por 2 minutos._`));
     }
   },
 
@@ -294,17 +296,18 @@ const economyCommands = {
     if (resultado < 0.30) {
       const botin = Math.floor(Math.random() * 3001) + 2000;
       userGroup.money += botin;
-      userGroup.cooldowns.atracar = new Date(Date.now() + 30 * MS_EN_MINUTO);
+      userGroup.cooldowns.atracar = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
       reply(fmt.aviso(`🏦 *ATRACO EXITOSO*\n\n¡Has robado el banco y ganaste *${formatNumber(botin)}* monedas!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
       userGroup.isJailed = true;
-      userGroup.jailUntil = new Date(Date.now() + 6 * MS_EN_HORA);
-      userGroup.cooldowns.atracar = new Date(Date.now() + 60 * MS_EN_MINUTO);
+      userGroup.jailCount = (userGroup.jailCount || 0) + 1;
+      userGroup.jailUntil = new Date(Date.now() + 5 * MS_EN_MINUTO);
+      userGroup.cooldowns.atracar = new Date(Date.now() + MS_EN_MINUTO);
       await userGroup.save();
       
-      reply(fmt.aviso(`🚔 *¡ATRACO FALLIDO!*\n\n¡Has sido atrapado atracando el banco!\n       𝄄   _Estás en prisión por 6 horas._`));
+      reply(fmt.aviso(`🚔 *¡ATRACO FALLIDO!*\n\n¡Has sido atrapado atracando el banco!\n       𝄄   _Estás en prisión por 5 minutos._`));
     }
   },
 
@@ -314,9 +317,11 @@ const economyCommands = {
       return reply(fmt.aviso('No estás en prisión.'));
     }
 
-    const costoFianza = 5000;
+    const jailCount = userGroup.jailCount || 0;
+    const costoFianza = 500 * (jailCount + 1);
+    
     if (userGroup.money + userGroup.bank < costoFianza) {
-      return reply(fmt.aviso(`No tienes suficiente dinero para pagar la fianza.\n       𝄄   _Necesitas ${formatNumber(costoFianza)} monedas._`));
+      return reply(fmt.aviso(`No tienes suficiente dinero para pagar la fianza.\n       𝄄   _Necesitas ${formatNumber(costoFianza)} monedas (x${jailCount + 1})._`));
     }
 
     if (userGroup.money < costoFianza) {
@@ -331,7 +336,7 @@ const economyCommands = {
     userGroup.jailUntil = null;
     await userGroup.save();
     
-    reply(fmt.aviso(`🏦 *FIANZA PAGADA*\n\n¡Has pagado tu fianza de *${formatNumber(costoFianza)}* monedas y has salido de prisión.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
+    reply(fmt.aviso(`🏦 *FIANZA PAGADA*\n\n¡Has pagado tu fianza de *${formatNumber(costoFianza)}* monedas (x${jailCount + 1}) y has salido de prisión.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
   },
 
   depositar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
