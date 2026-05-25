@@ -4,7 +4,6 @@ const activityCommands = require('./commands/activityCommands');
 const adminCommands = require('./commands/adminCommands');
 const suggestionCommands = require('./commands/suggestionCommands');
 const excuseCommands = require('./commands/excuseCommands');
-const animeCommands = require('./commands/animeCommands');
 const economyCommands = require('./commands/economyCommands');
 
 const handleCommand = async (sock, m, command, args, currentUser, config) => {
@@ -19,7 +18,6 @@ const handleCommand = async (sock, m, command, args, currentUser, config) => {
         ...adminCommands,
         ...suggestionCommands,
         ...excuseCommands,
-        ...animeCommands,
         ...economyCommands
     };
 
