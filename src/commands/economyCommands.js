@@ -476,6 +476,7 @@ const economyCommands = {
 };
 
 economyCommands.balance = economyCommands.dinero;
+economyCommands.saldo = economyCommands.dinero;
 economyCommands.w = economyCommands.work;
 economyCommands.dep = economyCommands.depositar;
 economyCommands.withdraw = economyCommands.retirar;
