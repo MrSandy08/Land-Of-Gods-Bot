@@ -216,7 +216,7 @@ async function startBot() {
       user.lastSeen = new Date();
 
       // =========================================================================
-      // 🎨 DECORACIÓN DE LOGS EN CONSOLA (ESTÉTICO & BONITO)
+      // 🎨 LOGS EN CONSOLA (SIN MENSAJES)
       // =========================================================================
       const timestamp = moment();
       const fecha = timestamp.format('DD/MM/YYYY');
@@ -230,14 +230,12 @@ async function startBot() {
       const cyan = "\x1b[36m";
       const magenta = "\x1b[35m";
       const verde = "\x1b[32m";
-      const amarillo = "\x1b[33m";
       const gris = "\x1b[90m";
 
       console.log(`${gris}┌────────────────────────────────────────────────────────────┐${reset}`);
       console.log(` ${cyan}📅 Fecha:${reset} ${fecha}   ${cyan}⏰ Hora:${reset} ${hora}`);
       console.log(` ${magenta}👤 User:${reset}  +${numeroLimpio}`);
       console.log(` ${verde}🎭 Char:${reset}  ${personaje} ${gris}${fandom}${reset}`);
-      console.log(` ${amarillo}💬 Msg:${reset}   ${body.substring(0, 50)}${body.length > 50 ? '...' : ''}`);
       console.log(`${gris}└────────────────────────────────────────────────────────────┘${reset}`);
       // =========================================================================
 

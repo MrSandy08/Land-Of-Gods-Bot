@@ -231,6 +231,7 @@ const economyCommands = {
     }
 
     const resultado = Math.random();
+    const nombreObjetivo = targetUser.personaje || '@' + targetId.split('@')[0];
     if (resultado < 0.10) {
       const montoRobado = Math.floor(targetUser.money * 0.5);
       targetUser.money -= montoRobado;
@@ -239,7 +240,7 @@ const economyCommands = {
       await user.save();
       await targetUser.save();
       
-      reply(fmt.aviso(`😈 *ROBO EXITOSO*\n\n¡Has robado *${formatNumber(montoRobado)}* monedas a ${fmt.mention(targetId)}!\n       𝄄   _Tu nuevo saldo: ${formatNumber(user.money)}_`));
+      reply(fmt.aviso(`😈 *ROBO EXITOSO*\n\n¡Has robado *${formatNumber(montoRobado)}* monedas a *${nombreObjetivo}*!\n       𝄄   _Tu nuevo saldo: ${formatNumber(user.money)}_`));
     } else {
       const multa = Math.floor(user.money * 0.3);
       user.money = Math.max(0, user.money - multa);
@@ -435,12 +436,13 @@ const economyCommands = {
       return reply(fmt.aviso('El destinatario no tiene un perfil registrado todavía.'));
     }
 
+    const nombreDestino = targetUser.personaje || '@' + targetId.split('@')[0];
     user.money -= monto;
     targetUser.money += monto;
     await user.save();
     await targetUser.save();
 
-    const texto = fmt.aviso(`💸 *TRANSFERENCIA EXITOSA*\n\nHas transferido *${formatNumber(monto)}* monedas a ${fmt.mention(targetId)}.\n       𝄄   _Tu nuevo saldo: ${formatNumber(user.money)}_`);
+    const texto = fmt.aviso(`💸 *TRANSFERENCIA EXITOSA*\n\nHas transferido *${formatNumber(monto)}* monedas a *${nombreDestino}*.\n       𝄄   _Tu nuevo saldo: ${formatNumber(user.money)}_`);
     
     await sock.sendMessage(m.key.remoteJid, { text: texto, mentions: [targetId] }, { quoted: m });
   }
