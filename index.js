@@ -19,6 +19,7 @@ const moment = require('moment');
 const fmt = require('./format');
 const fs = require('fs');
 const path = require('path');
+const UserGroup = require('./src/models/UserGroup');
 
 // Definimos la carpeta local de la sesión
 const authFolder = path.join(__dirname, 'auth_info_baileys');
@@ -212,9 +213,12 @@ async function startBot() {
       if (!user) {
         user = new User({ _id: sender });
       }
-      user.mensajes += 1;
-      user.lastSeen = new Date();
-
+      
+      let userGroup = await UserGroup.getOrCreate(sender, remoteJid);
+      userGroup.mensajes += 1;
+      userGroup.lastSeen = new Date();
+      await userGroup.save();
+      
       // 2. Control Anti-spam
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
       if (config.antispam.enabled) {

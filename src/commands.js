@@ -6,9 +6,13 @@ const suggestionCommands = require('./commands/suggestionCommands');
 const excuseCommands = require('./commands/excuseCommands');
 const economyCommands = require('./commands/economyCommands');
 
+const UserGroup = require('./models/UserGroup');
+
 const handleCommand = async (sock, m, command, args, currentUser, config, groupId, sender) => {
     const remoteJid = m.key.remoteJid;
     const reply = async (text) => await sock.sendMessage(remoteJid, { text, mentions: [sender] }, { quoted: m });
+    
+    const userGroup = await UserGroup.getOrCreate(sender, groupId);
 
     const allCommands = {
         ...menuCommands,
@@ -21,7 +25,7 @@ const handleCommand = async (sock, m, command, args, currentUser, config, groupI
     };
 
     if (allCommands[command]) {
-        await allCommands[command](sock, m, args, currentUser, config, reply, sender, groupId);
+        await allCommands[command](sock, m, args, currentUser, config, reply, sender, groupId, userGroup);
     }
 };
 

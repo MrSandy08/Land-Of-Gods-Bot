@@ -1,7 +1,7 @@
 const fmt = require('../../format');
 const { getTargetId } = require('../utils');
 const User = require('../models/User');
-const UserGroupEconomy = require('../models/UserGroupEconomy');
+const UserGroup = require('../models/UserGroup');
 const moment = require('moment');
 
 const MS_EN_DIA = 24 * 60 * 60 * 1000;
@@ -10,9 +10,9 @@ const MS_EN_MINUTO = 60 * 1000;
 
 const formatNumber = (num) => num.toLocaleString();
 
-const checkCooldown = (userEconomy, cooldownName) => {
-  if (!userEconomy.cooldowns) userEconomy.cooldowns = {};
-  const cooldownDate = userEconomy.cooldowns[cooldownName];
+const checkCooldown = (userGroup, cooldownName) => {
+  if (!userGroup.cooldowns) userGroup.cooldowns = {};
+  const cooldownDate = userGroup.cooldowns[cooldownName];
   if (!cooldownDate) return { active: false };
   
   const ahora = new Date();
@@ -32,9 +32,9 @@ const checkCooldown = (userEconomy, cooldownName) => {
   return { active: false };
 };
 
-const checkJail = (userEconomy) => {
-  if (userEconomy.isJailed && userEconomy.jailUntil && userEconomy.jailUntil > new Date()) {
-    const restante = userEconomy.jailUntil - new Date();
+const checkJail = (userGroup) => {
+  if (userGroup.isJailed && userGroup.jailUntil && userGroup.jailUntil > new Date()) {
+    const restante = userGroup.jailUntil - new Date();
     const horas = Math.floor(restante / (60 * 60 * 1000));
     const min = Math.floor((restante % (60 * 60 * 1000)) / (60 * 1000));
     return {
@@ -48,79 +48,76 @@ const checkJail = (userEconomy) => {
 };
 
 const economyCommands = {
-  dinero: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
+  dinero: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     const targetId = getTargetId(m, sender);
-    const targetUserId = targetId;
-    const userEconomy = await UserGroupEconomy.getOrCreate(targetUserId, groupId);
+    const targetUserGroup = await UserGroup.getOrCreate(targetId, groupId);
     
-    const jail = checkJail(userEconomy);
-    const total = userEconomy.money + userEconomy.bank;
+    const jail = checkJail(targetUserGroup);
+    const total = targetUserGroup.money + targetUserGroup.bank;
     let texto = fmt.header() + '\n\n' +
       fmt.aviso(`💰 *DINERO DE ${targetId === sender ? 'TI' : '@' + targetId.split('@')[0]}*\n\n` +
-        `💵 Cartera: *${formatNumber(userEconomy.money)}* monedas\n` +
-        `🏦 Banco: *${formatNumber(userEconomy.bank)}* monedas\n` +
+        `💵 Cartera: *${formatNumber(targetUserGroup.money)}* monedas\n` +
+        `🏦 Banco: *${formatNumber(targetUserGroup.bank)}* monedas\n` +
         `📊 Total: *${formatNumber(total)}* monedas`);
     
     if (jail.active) {
       texto += `\n\n🚔 *EN PRISIÓN*\nTiempo restante: *${jail.texto}*`;
     }
     
-    if (userEconomy.its) {
-      texto += `\n\n⚠️ *TIENES ITS*\nEnfermedad: *${userEconomy.its}*`;
+    if (targetUserGroup.its) {
+      texto += `\n\n⚠️ *TIENES ITS*\nEnfermedad: *${targetUserGroup.its}*`;
     }
     
     await sock.sendMessage(m.key.remoteJid, { text: texto, mentions: [targetId] }, { quoted: m });
   },
 
-  daily: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  daily: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes reclamar tu bono diario.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
     const ahora = new Date();
-    const ultimaVez = userEconomy.lastDaily || new Date(0);
+    const ultimaVez = userGroup.lastDaily || new Date(0);
     const diff = ahora - ultimaVez;
 
-    const cooldown = checkCooldown(userEconomy, 'daily');
+    const cooldown = checkCooldown(userGroup, 'daily');
     if (cooldown.active) {
       return reply(fmt.aviso(`Aún no puedes reclamar tu bono diario.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
 
     if (diff < 2 * MS_EN_DIA) {
-      userEconomy.dailyStreak = (userEconomy.dailyStreak || 0) + 1;
+      userGroup.dailyStreak = (userGroup.dailyStreak || 0) + 1;
     } else {
-      userEconomy.dailyStreak = 1;
+      userGroup.dailyStreak = 1;
     }
 
     let ganancia = 2000;
     let msgStreak = '';
 
-    if (userEconomy.dailyStreak >= 7) {
+    if (userGroup.dailyStreak >= 7) {
       ganancia *= 2;
-      userEconomy.dailyStreak = 0;
+      userGroup.dailyStreak = 0;
       msgStreak = '\n🔥 ¡Racha de 7 días completada! Recompensa doble.';
     } else {
-      msgStreak = `\n📅 Racha actual: *${userEconomy.dailyStreak}* días.`;
+      msgStreak = `\n📅 Racha actual: *${userGroup.dailyStreak}* días.`;
     }
 
-    userEconomy.money += ganancia;
-    userEconomy.lastDaily = ahora;
-    userEconomy.cooldowns.daily = new Date(ahora.getTime() + MS_EN_DIA);
-    await userEconomy.save();
+    userGroup.money += ganancia;
+    userGroup.lastDaily = ahora;
+    userGroup.cooldowns.daily = new Date(ahora.getTime() + MS_EN_DIA);
+    await userGroup.save();
 
-    reply(fmt.aviso(`🎁 *BONO DIARIO*\n\n¡Has reclamado tu bono de *${formatNumber(ganancia)}* monedas!${msgStreak}\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+    reply(fmt.aviso(`🎁 *BONO DIARIO*\n\n¡Has reclamado tu bono de *${formatNumber(ganancia)}* monedas!${msgStreak}\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
   },
 
-  work: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  work: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes trabajar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
-    const cooldown = checkCooldown(userEconomy, 'work');
+    const cooldown = checkCooldown(userGroup, 'work');
     if (cooldown.active) {
       return reply(fmt.aviso(`Estás agotado para trabajar. Descansa un poco.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
@@ -129,61 +126,59 @@ const economyCommands = {
 
     if (resultado < 0.70) {
       const ganancia = Math.floor(Math.random() * 401) + 100;
-      userEconomy.money += ganancia;
-      userEconomy.cooldowns.work = new Date(Date.now() + 2 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.money += ganancia;
+      userGroup.cooldowns.work = new Date(Date.now() + 2 * MS_EN_MINUTO);
+      await userGroup.save();
       
-      reply(fmt.aviso(`💼 *TRABAJO EXITOSO*\n\nHas trabajado duro hoy y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`💼 *TRABAJO EXITOSO*\n\nHas trabajado duro hoy y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else if (resultado < 0.85) {
       const ascenso = Math.floor(Math.random() * 201) + 300;
-      userEconomy.money += ascenso;
-      userEconomy.cooldowns.work = new Date(Date.now() + 1 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.money += ascenso;
+      userGroup.cooldowns.work = new Date(Date.now() + 1 * MS_EN_MINUTO);
+      await userGroup.save();
       
-      reply(fmt.aviso(`📈 *¡ASCIENSO!*\n\nTu jefe te ha notado tu esfuerzo. Ganaste *${formatNumber(ascenso)}* monedas extra.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`📈 *¡ASCIENSO!*\n\nTu jefe te ha notado tu esfuerzo. Ganaste *${formatNumber(ascenso)}* monedas extra.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else if (resultado < 0.95) {
       const descenso = Math.floor(Math.random() * 100) + 50;
-      userEconomy.money = Math.max(0, userEconomy.money - descenso);
-      userEconomy.cooldowns.work = new Date(Date.now() + 5 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.money = Math.max(0, userGroup.money - descenso);
+      userGroup.cooldowns.work = new Date(Date.now() + 5 * MS_EN_MINUTO);
+      await userGroup.save();
       
-      reply(fmt.aviso(`📉 *DESCIENSO*\n\nTe has equivocado en el trabajo. Perdiste *${formatNumber(descenso)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`📉 *DESCIENSO*\n\nTe has equivocado en el trabajo. Perdiste *${formatNumber(descenso)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      userEconomy.cooldowns.work = new Date(Date.now() + 10 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.cooldowns.work = new Date(Date.now() + 10 * MS_EN_MINUTO);
+      await userGroup.save();
       
       reply(fmt.aviso(`⚠️ *DESPIDO*\n\n¡Cometiste un error grave en el trabajo y te han despedido!\n       𝄄   _No puedes trabajar por los próximos 10 minutos._`));
     }
   },
 
-  minar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  minar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes minar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
-    const cooldown = checkCooldown(userEconomy, 'minar');
+    const cooldown = checkCooldown(userGroup, 'minar');
     if (cooldown.active) {
       return reply(fmt.aviso(`Tu mina está agotada.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
 
     const ganancia = Math.floor(Math.random() * 801) + 200;
-    userEconomy.money += ganancia;
-    userEconomy.cooldowns.minar = new Date(Date.now() + 5 * MS_EN_MINUTO);
-    await userEconomy.save();
+    userGroup.money += ganancia;
+    userGroup.cooldowns.minar = new Date(Date.now() + 5 * MS_EN_MINUTO);
+    await userGroup.save();
     
-    reply(fmt.aviso(`⛏️ *MINERÍA EXITOSA*\n\nHas encontrado una veta rica y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+    reply(fmt.aviso(`⛏️ *MINERÍA EXITOSA*\n\nHas encontrado una veta rica y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
   },
 
-  pescar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  pescar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes pescar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
-    const cooldown = checkCooldown(userEconomy, 'pescar');
+    const cooldown = checkCooldown(userGroup, 'pescar');
     if (cooldown.active) {
       return reply(fmt.aviso(`Los peces están huraños hoy.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
@@ -191,53 +186,51 @@ const economyCommands = {
     const resultado = Math.random();
     if (resultado < 0.80) {
       const ganancia = Math.floor(Math.random() * 301) + 50;
-      userEconomy.money += ganancia;
-      userEconomy.cooldowns.pescar = new Date(Date.now() + 3 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.money += ganancia;
+      userGroup.cooldowns.pescar = new Date(Date.now() + 3 * MS_EN_MINUTO);
+      await userGroup.save();
       
-      reply(fmt.aviso(`🎣 *PESCA EXITOSA*\n\nHas pescado un gran pez y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`🎣 *PESCA EXITOSA*\n\nHas pescado un gran pez y ganaste *${formatNumber(ganancia)}* monedas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      userEconomy.cooldowns.pescar = new Date(Date.now() + 1 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.cooldowns.pescar = new Date(Date.now() + 1 * MS_EN_MINUTO);
+      await userGroup.save();
       
       reply(fmt.aviso(`🎣 *PESCA FALLIDA*\n\nLos peces se han escapado. Vuelve a intentar en un rato.`));
     }
   },
 
-  prostituirse: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  prostituirse: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes prostituirte.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
-    const cooldown = checkCooldown(userEconomy, 'prostituirse');
+    const cooldown = checkCooldown(userGroup, 'prostituirse');
     if (cooldown.active) {
       return reply(fmt.aviso(`Estás cansado/a. Descansa un rato.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
 
     const ganancia = Math.floor(Math.random() * 501) + 300;
-    userEconomy.money += ganancia;
-    userEconomy.cooldowns.prostituirse = new Date(Date.now() + 15 * MS_EN_MINUTO);
+    userGroup.money += ganancia;
+    userGroup.cooldowns.prostituirse = new Date(Date.now() + 15 * MS_EN_MINUTO);
 
     const itsProbability = Math.random();
     if (itsProbability < 0.15) {
       const itsList = ['VIH', 'SIDA', 'Sífilis', 'Herpes'];
       const its = itsList[Math.floor(Math.random() * itsList.length)];
-      userEconomy.its = its;
-      await userEconomy.save();
+      userGroup.its = its;
+      await userGroup.save();
       
-      reply(fmt.aviso(`💋 *SERVICIO COMPLETADO*\n\nHas ganado *${formatNumber(ganancia)}* monedas, pero...\n\n⚠️ *¡OH NO!*\n¡Te has contagiado de *${its}*!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`💋 *SERVICIO COMPLETADO*\n\nHas ganado *${formatNumber(ganancia)}* monedas, pero...\n\n⚠️ *¡OH NO!*\n¡Te has contagiado de *${its}*!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      await userEconomy.save();
+      await userGroup.save();
       
-      reply(fmt.aviso(`💋 *SERVICIO COMPLETADO*\n\nHas ganado *${formatNumber(ganancia)}* monedas sin problemas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`💋 *SERVICIO COMPLETADO*\n\nHas ganado *${formatNumber(ganancia)}* monedas sin problemas.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     }
   },
 
-  robar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  robar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes robar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
@@ -251,49 +244,48 @@ const economyCommands = {
       return reply(fmt.aviso('No te puedes robar a ti mismo.'));
     }
 
-    const cooldown = checkCooldown(userEconomy, 'robar');
+    const cooldown = checkCooldown(userGroup, 'robar');
     if (cooldown.active) {
       return reply(fmt.aviso(`Estás caliente. Espera un rato.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
 
-    const targetUserEconomy = await UserGroupEconomy.getOrCreate(targetId, groupId);
+    const targetUserGroup = await UserGroup.getOrCreate(targetId, groupId);
     const targetUser = await User.findById(targetId);
-    const nombreObjetivo = targetUser?.personaje || '@' + targetId.split('@')[0];
+    const nombreObjetivo = targetUserGroup.personaje || targetUser?.personaje || '@' + targetId.split('@')[0];
 
-    if (targetUserEconomy.money === 0) {
+    if (targetUserGroup.money === 0) {
       return reply(fmt.aviso('El objetivo no tiene dinero en la cartera.¡Debería depositarlo en el banco!'));
     }
 
     const resultado = Math.random();
     if (resultado < 0.10) {
-      const montoRobado = Math.floor(targetUserEconomy.money * 0.5);
-      targetUserEconomy.money -= montoRobado;
-      userEconomy.money += montoRobado;
-      userEconomy.cooldowns.robar = new Date(Date.now() + 10 * MS_EN_MINUTO);
-      await userEconomy.save();
-      await targetUserEconomy.save();
+      const montoRobado = Math.floor(targetUserGroup.money * 0.5);
+      targetUserGroup.money -= montoRobado;
+      userGroup.money += montoRobado;
+      userGroup.cooldowns.robar = new Date(Date.now() + 10 * MS_EN_MINUTO);
+      await userGroup.save();
+      await targetUserGroup.save();
       
-      reply(fmt.aviso(`😈 *ROBO EXITOSO*\n\n¡Has robado *${formatNumber(montoRobado)}* monedas a *${nombreObjetivo}*!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`😈 *ROBO EXITOSO*\n\n¡Has robado *${formatNumber(montoRobado)}* monedas a *${nombreObjetivo}*!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      const multa = Math.floor(userEconomy.money * 0.3);
-      userEconomy.money = Math.max(0, userEconomy.money - multa);
-      userEconomy.isJailed = true;
-      userEconomy.jailUntil = new Date(Date.now() + 2 * MS_EN_HORA);
-      userEconomy.cooldowns.robar = new Date(Date.now() + 30 * MS_EN_MINUTO);
-      await userEconomy.save();
+      const multa = Math.floor(userGroup.money * 0.3);
+      userGroup.money = Math.max(0, userGroup.money - multa);
+      userGroup.isJailed = true;
+      userGroup.jailUntil = new Date(Date.now() + 2 * MS_EN_HORA);
+      userGroup.cooldowns.robar = new Date(Date.now() + 30 * MS_EN_MINUTO);
+      await userGroup.save();
       
       reply(fmt.aviso(`🚔 *¡ATRAPADO!*\n\n¡Has sido atrapado robando!\n       𝄄   _Pagaste una multa de ${formatNumber(multa)} monedas y estás en prisión por 2 horas._`));
     }
   },
 
-  atracar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  atracar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes atracar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
 
-    const cooldown = checkCooldown(userEconomy, 'atracar');
+    const cooldown = checkCooldown(userGroup, 'atracar');
     if (cooldown.active) {
       return reply(fmt.aviso(`La policía está vigilando. Espera un rato.\n       𝄄   _Tiempo restante: ${cooldown.texto}_`));
     }
@@ -301,51 +293,49 @@ const economyCommands = {
     const resultado = Math.random();
     if (resultado < 0.30) {
       const botin = Math.floor(Math.random() * 3001) + 2000;
-      userEconomy.money += botin;
-      userEconomy.cooldowns.atracar = new Date(Date.now() + 30 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.money += botin;
+      userGroup.cooldowns.atracar = new Date(Date.now() + 30 * MS_EN_MINUTO);
+      await userGroup.save();
       
-      reply(fmt.aviso(`🏦 *ATRACO EXITOSO*\n\n¡Has robado el banco y ganaste *${formatNumber(botin)}* monedas!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+      reply(fmt.aviso(`🏦 *ATRACO EXITOSO*\n\n¡Has robado el banco y ganaste *${formatNumber(botin)}* monedas!\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
     } else {
-      userEconomy.isJailed = true;
-      userEconomy.jailUntil = new Date(Date.now() + 6 * MS_EN_HORA);
-      userEconomy.cooldowns.atracar = new Date(Date.now() + 60 * MS_EN_MINUTO);
-      await userEconomy.save();
+      userGroup.isJailed = true;
+      userGroup.jailUntil = new Date(Date.now() + 6 * MS_EN_HORA);
+      userGroup.cooldowns.atracar = new Date(Date.now() + 60 * MS_EN_MINUTO);
+      await userGroup.save();
       
       reply(fmt.aviso(`🚔 *¡ATRACO FALLIDO!*\n\n¡Has sido atrapado atracando el banco!\n       𝄄   _Estás en prisión por 6 horas._`));
     }
   },
 
-  fianza: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  fianza: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (!jail.active) {
       return reply(fmt.aviso('No estás en prisión.'));
     }
 
     const costoFianza = 5000;
-    if (userEconomy.money + userEconomy.bank < costoFianza) {
+    if (userGroup.money + userGroup.bank < costoFianza) {
       return reply(fmt.aviso(`No tienes suficiente dinero para pagar la fianza.\n       𝄄   _Necesitas ${formatNumber(costoFianza)} monedas._`));
     }
 
-    if (userEconomy.money < costoFianza) {
-      const faltante = costoFianza - userEconomy.money;
-      userEconomy.bank -= faltante;
-      userEconomy.money = 0;
+    if (userGroup.money < costoFianza) {
+      const faltante = costoFianza - userGroup.money;
+      userGroup.bank -= faltante;
+      userGroup.money = 0;
     } else {
-      userEconomy.money -= costoFianza;
+      userGroup.money -= costoFianza;
     }
 
-    userEconomy.isJailed = false;
-    userEconomy.jailUntil = null;
-    await userEconomy.save();
+    userGroup.isJailed = false;
+    userGroup.jailUntil = null;
+    await userGroup.save();
     
-    reply(fmt.aviso(`🏦 *FIANZA PAGADA*\n\n¡Has pagado tu fianza de *${formatNumber(costoFianza)}* monedas y has salido de prisión.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`));
+    reply(fmt.aviso(`🏦 *FIANZA PAGADA*\n\n¡Has pagado tu fianza de *${formatNumber(costoFianza)}* monedas y has salido de prisión.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`));
   },
 
-  depositar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  depositar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes depositar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
@@ -356,7 +346,7 @@ const economyCommands = {
 
     let monto = 0;
     if (input === 'all') {
-      monto = userEconomy.money;
+      monto = userGroup.money;
     } else {
       monto = parseInt(input);
     }
@@ -365,20 +355,19 @@ const economyCommands = {
       return reply(fmt.aviso('Escribe una cantidad válida para depositar.'));
     }
 
-    if (userEconomy.money < monto) {
+    if (userGroup.money < monto) {
       return reply(fmt.aviso(`No tienes suficiente dinero en tu cartera para depositar *${formatNumber(monto)}* monedas.`));
     }
 
-    userEconomy.money -= monto;
-    userEconomy.bank += monto;
-    await userEconomy.save();
+    userGroup.money -= monto;
+    userGroup.bank += monto;
+    await userGroup.save();
 
-    reply(fmt.aviso(`🏦 *DEPÓSITO BANCARIO*\n\nHas depositado *${formatNumber(monto)}* monedas en tu banco.\n       𝄄   _Cartera: $${formatNumber(userEconomy.money)}_\n       𝄄   _Banco: $${formatNumber(userEconomy.bank)}_`));
+    reply(fmt.aviso(`🏦 *DEPÓSITO BANCARIO*\n\nHas depositado *${formatNumber(monto)}* monedas en tu banco.\n       𝄄   _Cartera: $${formatNumber(userGroup.money)}_\n       𝄄   _Banco: $${formatNumber(userGroup.bank)}_`));
   },
 
-  retirar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  retirar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes retirar.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
@@ -389,7 +378,7 @@ const economyCommands = {
 
     let monto = 0;
     if (input === 'all') {
-      monto = userEconomy.bank;
+      monto = userGroup.bank;
     } else {
       monto = parseInt(input);
     }
@@ -398,38 +387,38 @@ const economyCommands = {
       return reply(fmt.aviso('Escribe una cantidad válida para retirar.'));
     }
 
-    if (userEconomy.bank < monto) {
+    if (userGroup.bank < monto) {
       return reply(fmt.aviso(`No tienes suficiente dinero en tu banco para retirar *${formatNumber(monto)}* monedas.`));
     }
 
-    userEconomy.bank -= monto;
-    userEconomy.money += monto;
-    await userEconomy.save();
+    userGroup.bank -= monto;
+    userGroup.money += monto;
+    await userGroup.save();
 
-    reply(fmt.aviso(`🏦 *RETIRO BANCARIO*\n\nHas retirado *${formatNumber(monto)}* monedas de tu banco.\n       𝄄   _Cartera: $${formatNumber(userEconomy.money)}_\n       𝄄   _Banco: $${formatNumber(userEconomy.bank)}_`));
+    reply(fmt.aviso(`🏦 *RETIRO BANCARIO*\n\nHas retirado *${formatNumber(monto)}* monedas de tu banco.\n       𝄄   _Cartera: $${formatNumber(userGroup.money)}_\n       𝄄   _Banco: $${formatNumber(userGroup.bank)}_`));
   },
 
   ricos: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const top10Economy = await UserGroupEconomy.find({ groupId })
+    const top10UserGroup = await UserGroup.find({ groupId })
       .sort({ $expr: { $add: ['$money', '$bank'] } })
       .limit(10);
 
-    if (!top10Economy.length) {
+    if (!top10UserGroup.length) {
       return reply(fmt.aviso('No hay usuarios con dinero registrado todavía. 💸'));
     }
 
     let txt = fmt.header() + '\n\n';
 
-    for (const ue of top10Economy) {
-      const user = await User.findById(ue.userId);
-      const i = top10Economy.indexOf(ue);
+    for (const ug of top10UserGroup) {
+      const user = await User.findById(ug.userId);
+      const i = top10UserGroup.indexOf(ug);
       const medalla = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '👤';
-      const total = ue.money + ue.bank;
-      const nombre = user?.personaje || '@' + ue.userId.split('@')[0];
+      const total = ug.money + ug.bank;
+      const nombre = ug.personaje || user?.personaje || '@' + ug.userId.split('@')[0];
       txt += ` ${medalla} *${i + 1}. ${nombre}*\n`;
       txt += `       𝄄   Total: *$${formatNumber(total)}*\n`;
-      txt += `       𝄄   Banco: $${formatNumber(ue.bank)} | Cartera: $${formatNumber(ue.money)}\n`;
-      if (ue.isJailed && ue.jailUntil && ue.jailUntil > new Date()) {
+      txt += `       𝄄   Banco: $${formatNumber(ug.bank)} | Cartera: $${formatNumber(ug.money)}\n`;
+      if (ug.isJailed && ug.jailUntil && ug.jailUntil > new Date()) {
         txt += `       𝄄   🚔 EN PRISIÓN\n`;
       }
       txt += '\n';
@@ -438,13 +427,12 @@ const economyCommands = {
     txt += `                 𑂯 ( ⚡ ) ⁺ 𓈒  ׁ     
        𝄄   _¡Sigue trabajando para entrar al top!_`;
 
-    const mentions = top10Economy.map(ue => ue.userId);
+    const mentions = top10UserGroup.map(ug => ug.userId);
     await sock.sendMessage(m.key.remoteJid, { text: txt, mentions }, { quoted: m });
   },
 
-  transferir: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
-    const userEconomy = await UserGroupEconomy.getOrCreate(sender, groupId);
-    const jail = checkJail(userEconomy);
+  transferir: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    const jail = checkJail(userGroup);
     if (jail.active) {
       return reply(fmt.aviso(`Estás en prisión. No puedes transferir.\n       𝄄   _Tiempo restante: ${jail.texto}_`));
     }
@@ -463,20 +451,20 @@ const economyCommands = {
       return reply(fmt.aviso('Escribe una cantidad válida para transferir.'));
     }
 
-    if (userEconomy.money < monto) {
+    if (userGroup.money < monto) {
       return reply(fmt.aviso(`No tienes suficiente dinero para transferir *${formatNumber(monto)}* monedas.`));
     }
 
-    const targetUserEconomy = await UserGroupEconomy.getOrCreate(targetId, groupId);
+    const targetUserGroup = await UserGroup.getOrCreate(targetId, groupId);
     const targetUser = await User.findById(targetId);
-    const nombreDestino = targetUser?.personaje || '@' + targetId.split('@')[0];
+    const nombreDestino = targetUserGroup.personaje || targetUser?.personaje || '@' + targetId.split('@')[0];
 
-    userEconomy.money -= monto;
-    targetUserEconomy.money += monto;
-    await userEconomy.save();
-    await targetUserEconomy.save();
+    userGroup.money -= monto;
+    targetUserGroup.money += monto;
+    await userGroup.save();
+    await targetUserGroup.save();
 
-    const texto = fmt.aviso(`💸 *TRANSFERENCIA EXITOSA*\n\nHas transferido *${formatNumber(monto)}* monedas a *${nombreDestino}*.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userEconomy.money)}_`);
+    const texto = fmt.aviso(`💸 *TRANSFERENCIA EXITOSA*\n\nHas transferido *${formatNumber(monto)}* monedas a *${nombreDestino}*.\n       𝄄   _Tu nuevo saldo: ${formatNumber(userGroup.money)}_`);
     
     await sock.sendMessage(m.key.remoteJid, { text: texto, mentions: [targetId] }, { quoted: m });
   }
