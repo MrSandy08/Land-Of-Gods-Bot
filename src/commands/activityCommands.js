@@ -9,10 +9,10 @@ module.exports = {
             const limit = parseInt(args[0]) || 10;
             if (isNaN(limit) || limit <= 0) return reply(fmt.aviso('Por favor ingresa un número válido.'));
 
-            const top = await UserGroup.find({ groupId, personaje: { $ne: null } })
+            const top = await UserGroup.find({ groupId })
                 .sort({ mensajes: -1 })
                 .limit(limit)
-                .select('userId mensajes')
+                .select('userId mensajes personaje')
                 .lean();
 
             if (top.length === 0) return reply(fmt.aviso('No hay datos de actividad en este grupo.'));
@@ -23,7 +23,8 @@ module.exports = {
 
             top.forEach((ug, index) => {
                 const jidClean = ug.userId.split('@')[0];
-                text += fmt.listItem(`*[${index + 1}]* @${jidClean} 𝄄 _${ug.mensajes} mjs_\n');
+                const tagPersonaje = ug.personaje ? ` (${ug.personaje})` : ' (Sin Personaje)';
+                text += fmt.listItem(`*[${index + 1}]* @${jidClean}${tagPersonaje} 𝄄 _${ug.mensajes} mjs_\n`);
                 mentions.push(ug.userId);
             });
 
@@ -36,17 +37,13 @@ module.exports = {
 
     low: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
-            const low = await UserGroup.find({
-                groupId,
-                personaje: { $ne: null },
-                mensajes: { $gt: 0 }
-            })
-            .sort({ mensajes: 1 })
-            .limit(10)
-            .select('userId mensajes personaje')
-            .lean();
+            const low = await UserGroup.find({ groupId })
+                .sort({ mensajes: 1 })
+                .limit(10)
+                .select('userId mensajes personaje')
+                .lean();
 
-            if (low.length === 0) return reply(fmt.aviso('No hay suficientes usuarios activos para generar la lista.'));
+            if (low.length === 0) return reply(fmt.aviso('No hay usuarios registrados en este grupo.'));
 
             let text = fmt.header();
             text += fmt.listSection('RANKING MENOS ACTIVOS');
@@ -54,7 +51,8 @@ module.exports = {
 
             low.forEach((ug, index) => {
                 const jidClean = ug.userId.split('@')[0];
-                text += fmt.listItem(`*[${index + 1}]* @${jidClean} (${ug.personaje}) 𝄄 _${ug.mensajes} mjs_\n');
+                const tagPersonaje = ug.personaje ? ` (${ug.personaje})` : ' (Sin Personaje)';
+                text += fmt.listItem(`*[${index + 1}]* @${jidClean}${tagPersonaje} 𝄄 _${ug.mensajes} mjs_\n`);
                 mentions.push(ug.userId);
             });
 
@@ -71,17 +69,22 @@ module.exports = {
             if (isNaN(days) || days <= 0) return reply(fmt.aviso('Número de días inválido.'));
 
             const threshold = moment().subtract(days, 'days').toDate();
+            const fechaInmunidad = moment().subtract(7, 'days').toDate();
 
-            const inactivos = await UserGroup.find({
+            const candidatos = await UserGroup.find({
                 groupId,
-                lastSeen: { $lt: threshold },
-                personaje: { $ne: null }
+                lastSeen: { $lt: threshold }
             })
-            .select('userId personaje lastSeen')
+            .select('userId personaje lastSeen createdAt')
             .lean();
 
+            const inactivos = candidatos.filter(ug => {
+                const fechaRegistro = ug.createdAt || ug.lastSeen;
+                return fechaRegistro < fechaInmunidad;
+            });
+
             if (inactivos.length === 0) {
-                return reply(fmt.aviso(`No hay usuarios inactivos de ${days} días en este grupo.'));
+                return reply(fmt.aviso(`No hay usuarios inactivos de ${days} días (excluyendo nuevos con inmunidad).`));
             }
 
             let text = fmt.header();
@@ -91,7 +94,9 @@ module.exports = {
             inactivos.forEach((ug) => {
                 const d = moment().diff(moment(ug.lastSeen), 'days');
                 const jidClean = ug.userId.split('@')[0];
-                text += fmt.listItem(`@${jidClean} - ${ug.personaje}\n`) + `       𝄄   _Hace ${d} días sin aparecer_\n\n`;
+                const tagPersonaje = ug.personaje ? ` - ${ug.personaje}` : ' - (Sin Personaje)';
+                
+                text += fmt.listItem(`@${jidClean}${tagPersonaje}\n`) + `       𝄄   _Hace ${d} días sin aparecer_\n\n`;
                 mentions.push(ug.userId);
             });
 

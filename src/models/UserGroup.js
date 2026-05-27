@@ -4,6 +4,7 @@ const UserGroupSchema = new mongoose.Schema({
   _id: { type: String, required: true }, // userId + '-' + groupId
   userId: { type: String, required: true },
   groupId: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
   
   // Personaje y Fandom
   personaje: { type: String, default: null },
