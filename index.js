@@ -24,8 +24,8 @@ const UserGroup = require('./src/models/UserGroup');
 // Definimos la carpeta local de la sesión
 const authFolder = path.join(__dirname, 'auth_info_baileys');
 
-// Anti-spam state
-const spamState = new Map();
+// Anti-spam: Historial de mensajes en memoria por grupo y usuario
+const msgHistory = new Map();
 
 // Variable para guardar el código de vinculación
 let pairingCode = "Esperando código...";
@@ -42,6 +42,33 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`[SERVER] Puerto web activado correctamente en el puerto ${PORT}`);
 });
+
+// Función para evaluar antispam
+const handleAntispam = (m, config, groupId) => {
+  if (!config.antispam.enabled) return false;
+  
+  const sender = m.key.participant || m.key.remoteJid;
+  const now = Date.now();
+  const storageKey = `${groupId}-${sender}`;
+
+  if (!msgHistory.has(storageKey)) {
+    msgHistory.set(storageKey, []);
+  }
+
+  const userTimestamps = msgHistory.get(storageKey);
+  const timeLimitMs = config.antispam.seconds * 1000;
+  const recentMessages = userTimestamps.filter(timestamp => now - timestamp < timeLimitMs);
+
+  recentMessages.push(now);
+  msgHistory.set(storageKey, recentMessages);
+
+  if (recentMessages.length > config.antispam.limit) {
+    console.log(`[SPAM] Mensaje ignorado de ${sender} en ${groupId}`);
+    return true;
+  }
+
+  return false;
+};
 
 // Función para procesar excusas diariamente
 const dailyJob = async (sock) => {
@@ -221,17 +248,9 @@ async function startBot() {
       
       // 2. Control Anti-spam
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
-      if (config.antispam.enabled) {
-        const now = Date.now();
-        const userSpam = spamState.get(sender) || [];
-        const recentMessages = userSpam.filter(timestamp => now - timestamp < config.antispam.seconds * 1000);
-        
-        recentMessages.push(now);
-        spamState.set(sender, recentMessages);
-
-        if (recentMessages.length > config.antispam.limit) {
-          return;
-        }
+      const isSpamming = handleAntispam(m, config, remoteJid);
+      if (isSpamming) {
+        return;
       }
 
       // 3. Manejo de Comandos
