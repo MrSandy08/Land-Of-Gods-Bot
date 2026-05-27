@@ -24,7 +24,7 @@ module.exports = {
             top.forEach((ug, index) => {
                 const jidClean = ug.userId.split('@')[0];
                 const tagPersonaje = ug.personaje ? ` (${ug.personaje})` : ' (Sin Personaje)';
-                text += fmt.listItem(`*[${index + 1}]* @${jidClean}${tagPersonaje} 𝄄 _${ug.mensajes} mjs_\n`);
+                text += fmt.listItem(`*[${index + 1}]* @${jidClean} ${tagPersonaje} 𝄄 _${ug.mensajes} mjs_\n`);
                 mentions.push(ug.userId);
             });
 
@@ -96,7 +96,7 @@ module.exports = {
                 const jidClean = ug.userId.split('@')[0];
                 const tagPersonaje = ug.personaje ? ` - ${ug.personaje}` : ' - (Sin Personaje)';
                 
-                text += fmt.listItem(`@${jidClean}${tagPersonaje}\n`) + `       𝄄   _Hace ${d} días sin aparecer_\n\n`;
+                text += fmt.listItem(`@${jidClean} ${tagPersonaje}\n`) + `       𝄄   _Hace ${d} días sin aparecer_\n\n`;
                 mentions.push(ug.userId);
             });
 
