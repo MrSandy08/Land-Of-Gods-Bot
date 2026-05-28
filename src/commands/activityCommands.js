@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const UserGroup = require('../models/UserGroup');
+const Group = require('../models/Group');
 const moment = require('moment');
 const fmt = require('../../format');
 
@@ -9,13 +10,23 @@ module.exports = {
             const limit = parseInt(args[0]) || 10;
             if (isNaN(limit) || limit <= 0) return reply(fmt.aviso('Por favor ingresa un número válido.'));
 
-            const top = await UserGroup.find({ groupId })
+            const groupDoc = await Group.findById(groupId);
+            const comunidadId = groupDoc?.comunidadId;
+
+            let filter;
+            if (comunidadId) {
+                filter = { comunidadId };
+            } else {
+                filter = { groupId };
+            }
+
+            const top = await UserGroup.find(filter)
                 .sort({ mensajes: -1 })
                 .limit(limit)
                 .select('userId mensajes personaje')
                 .lean();
 
-            if (top.length === 0) return reply(fmt.aviso('No hay datos de actividad en este grupo.'));
+            if (top.length === 0) return reply(fmt.aviso('No hay datos de actividad.'));
 
             let text = fmt.header();
             text += fmt.listSection('RANKING TOP ACTIVIDAD');
@@ -24,7 +35,7 @@ module.exports = {
             top.forEach((ug, index) => {
                 const jidClean = ug.userId.split('@')[0];
                 const tagPersonaje = ug.personaje ? ` (${ug.personaje})` : ' (Sin Personaje)';
-                text += fmt.listItem(`*[${index + 1}]* @${jidClean} ${tagPersonaje} 𝄄 _${ug.mensajes} mjs_\n`);
+                text += fmt.listItem(`*[${index + 1}]* @${jidClean} ${tagPersonaje} 𝄄 _${ug.mensajes} mjs_`);
                 mentions.push(ug.userId);
             });
 
@@ -37,13 +48,23 @@ module.exports = {
 
     low: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
-            const low = await UserGroup.find({ groupId })
+            const groupDoc = await Group.findById(groupId);
+            const comunidadId = groupDoc?.comunidadId;
+
+            let filter;
+            if (comunidadId) {
+                filter = { comunidadId };
+            } else {
+                filter = { groupId };
+            }
+
+            const low = await UserGroup.find(filter)
                 .sort({ mensajes: 1 })
                 .limit(10)
                 .select('userId mensajes personaje')
                 .lean();
 
-            if (low.length === 0) return reply(fmt.aviso('No hay usuarios registrados en este grupo.'));
+            if (low.length === 0) return reply(fmt.aviso('No hay usuarios registrados.'));
 
             let text = fmt.header();
             text += fmt.listSection('RANKING MENOS ACTIVOS');
@@ -52,7 +73,7 @@ module.exports = {
             low.forEach((ug, index) => {
                 const jidClean = ug.userId.split('@')[0];
                 const tagPersonaje = ug.personaje ? ` (${ug.personaje})` : ' (Sin Personaje)';
-                text += fmt.listItem(`*[${index + 1}]* @${jidClean}${tagPersonaje} 𝄄 _${ug.mensajes} mjs_\n`);
+                text += fmt.listItem(`*[${index + 1}]* @${jidClean}${tagPersonaje} 𝄄 _${ug.mensajes} mjs_`);
                 mentions.push(ug.userId);
             });
 
@@ -71,10 +92,19 @@ module.exports = {
             const threshold = moment().subtract(days, 'days').toDate();
             const fechaInmunidad = moment().subtract(7, 'days').toDate();
 
-            const candidatos = await UserGroup.find({
-                groupId,
+            const groupDoc = await Group.findById(groupId);
+            const comunidadId = groupDoc?.comunidadId;
+
+            let filter = {
                 lastSeen: { $lt: threshold }
-            })
+            };
+            if (comunidadId) {
+                filter.comunidadId = comunidadId;
+            } else {
+                filter.groupId = groupId;
+            }
+
+            const candidatos = await UserGroup.find(filter)
             .select('userId personaje lastSeen createdAt')
             .lean();
 

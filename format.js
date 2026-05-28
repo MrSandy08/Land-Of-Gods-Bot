@@ -1,4 +1,4 @@
-// Módulo centralizado de formato visual - Estilo Beyonder v3
+// Módulo centralizado de formato visual - Estilo Land of Gods
 
 // ─── Cabecera de menú ─────────────────────────────────
 const header = () => 
@@ -6,7 +6,7 @@ const header = () =>
 
 // ─── Categoría (Centrada con adornos) ────────────────────────────────────────
 const category = (nombre) =>
-`\n                     𝄄 𓈒   ⁺ ${nombre}   𓏼\n`;
+`\n            𝄄 𓈒   ⁺ ${nombre}   𓏼\n`;
 
 // ─── Línea de comando (Con sangría y descripción) ───────────────────────────
 const cmdLine = (emoji, cmd, desc) =>
@@ -14,10 +14,9 @@ const cmdLine = (emoji, cmd, desc) =>
        𝄄   _${desc}_\n`;
 
 // ─── Aviso / Error / Confirmación (El formato del rayo) ─────────────────────
-const aviso = (mensaje) =>
-`                 𑂯 ( ⚡ ) ⁺ 𓈒  ׁ     
+const aviso = (mensaje) =>`                 𑂯 ( ⚡ ) ⁺ 𓈒  ׁ     
  𝄄➥ ${mensaje}
-       @𝐀𝗍𝗍𝖾 : ℬeyonder`;
+       @𝐀𝗍𝗍𝖾 : 𝓛and 𝓞f 𝓖ods`;
 
 // ─── Sección de lista (Staff / Miembros) ─────────────────────────────────────
 const listSection = (titulo) =>
@@ -25,7 +24,7 @@ const listSection = (titulo) =>
 
 // ─── Línea de ítem de lista (Sin etiquetas @ para evitar flood de notificaciones) ───────
 const listItem = (nombre, icono = "") => {
-  return ` 𝄄➥ *${nombre}*${icono ? " " + icono : ""}\n`;
+  return ` 𝄄➥ ${nombre}${icono ? " " + icono : ""}\n`;
 };
 
 // ─── Lógica de Íconos de Inactividad ─────────────────────────────────────────
@@ -39,7 +38,7 @@ const inactividadIcon = (lastMessage) => {
 
 // ─── Interfaz de Info / Perfil ───────────────────────────────────────────────
 const infoHeader = () => {
-  return ` ‎ ‎ ‎             𐔌 . ▧ˎˊ˗     ⿻๋࣭ ⭑    ♯.ᐟ ֹ ₊ ꒱ ‎ ‎`;
+  return ` ‎ ‎ ‎     𐔌 . ▧ˎˊ˗     ⿻๋࣭ ⭑    ♯.ᐟ ֹ ₊ ꒱ ‎ ‎`;
 };
 
 const infoField = (campo, valor) =>

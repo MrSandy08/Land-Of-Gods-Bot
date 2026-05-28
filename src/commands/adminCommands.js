@@ -37,7 +37,7 @@ module.exports = {
             if (!targetId) return reply(fmt.aviso('No se encontró al usuario.'));
             
             const razon = args.slice(1).join(' ');
-            const u = await UserGroup.getOrCreate(targetId, groupId);
+            const u = await UserGroup.getOrCreate(targetId);
             u.advertencias.push({ razon, admin: sender });
             await u.save();
 
@@ -47,14 +47,6 @@ module.exports = {
             if (u.advertencias.length >= config.maxAdvertencias) {
                 const alertaTexto = fmt.aviso(`🚨 @${targetId.split('@')[0]} ha alcanzado el máximo de advertencias.`);
                 await sock.sendMessage(m.key.remoteJid, { text: alertaTexto, mentions: [targetId] }, { quoted: m });
-                
-                if (groupId.endsWith('@g.us')) {
-                    try {
-                        await sock.groupParticipantsUpdate(groupId, [targetId], 'remove');
-                    } catch (err) {
-                        console.error('Error al remover usuario del grupo:', err);
-                    }
-                }
             }
         } catch (err) {
             console.error('Error en !adv:', err);
@@ -64,12 +56,15 @@ module.exports = {
 
     advertencias: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
-            const users = await UserGroup.find({ groupId, 'advertencias.0': { $exists: true } }).sort({ fandom: 1, _id: 1 });
+            const users = await UserGroup.find({ groupId, 'advertencias.0': { $exists: true } })
+                .sort({ fandom: 1, _id: 1 })
+                .select('userId personaje fandom advertencias')
+                .lean();
             if (users.length === 0) return reply(fmt.aviso('No hay advertencias en este grupo.'));
 
             const pedidosCount = await Pedido.countDocuments();
             const sugesCount = await Sugerencia.countDocuments();
-            const excusasCount = await UserGroup.countDocuments({ groupId, 'excusa.activa': true });
+            const excusasCount = await UserGroup.countDocuments({ 'excusa.activa': true });
             let globalIndex = pedidosCount + sugesCount + excusasCount + 1;
 
             let text = fmt.header();
@@ -102,11 +97,17 @@ module.exports = {
     quitar: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
             if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins.'));
-            if (!args[0]?.startsWith('#')) return reply(fmt.aviso('Uso: !quitar #numero [índice advertencia]'));
-            const num = parseInt(args[0].slice(1)) - 1;
-            const advIndex = args[1] ? parseInt(args[1]) - 1 : null;
+            if (args.length === 0) return reply(fmt.aviso('Uso: !quitar [número] O !quitar [número] [índice_adv]'));
 
-            const pedidos = await Pedido.find().sort({ _id: 1 }).select('_id').lean();
+            const num = parseInt(args[0]) - 1;
+            if (isNaN(num) || num < 0) return reply(fmt.aviso('Número inválido.'));
+
+            let advIndex = null;
+            if (args[1] && !isNaN(args[1])) {
+                advIndex = parseInt(args[1]) - 1;
+            }
+
+            const pedidos = await Pedido.find().sort({ fandom: 1 }).select('_id').lean();
             if (num < pedidos.length) {
                 await Pedido.findByIdAndDelete(pedidos[num]._id);
                 return reply(fmt.aviso(`Pedido #${num + 1} eliminado.`));
@@ -114,7 +115,7 @@ module.exports = {
             
             let currentOffset = pedidos.length;
 
-            const suges = await Sugerencia.find().sort({ _id: 1 }).select('_id').lean();
+            const suges = await Sugerencia.find().select('_id').lean();
             if (num < currentOffset + suges.length) {
                 const sIdx = num - currentOffset;
                 await Sugerencia.findByIdAndDelete(suges[sIdx]._id);
@@ -123,31 +124,44 @@ module.exports = {
             
             currentOffset += suges.length;
 
-            const excusas = await UserGroup.find({ groupId, 'excusa.activa': true }).sort({ userId: 1 }).select('_id userId excusa personaje').lean();
+            const excusas = await UserGroup.find({ 'excusa.activa': true }).select('_id personaje').lean();
             if (num < currentOffset + excusas.length) {
                 const eIdx = num - currentOffset;
                 const ug = excusas[eIdx];
                 await UserGroup.findByIdAndUpdate(ug._id, { 'excusa.activa': false });
-                return reply(fmt.aviso(`Excusa #${num + 1} (de ${ug.personaje}) eliminada.`));
+                return reply(fmt.aviso(`Excusa #${num + 1} (de ${ug.personaje || 'Sin Personaje'}) eliminada.`));
             }
 
             currentOffset += excusas.length;
 
-            const usersWithAdv = await UserGroup.find({ groupId, 'advertencias.0': { $exists: true } }).sort({ fandom: 1, _id: 1 }).select('_id userId personaje advertencias').lean();
+            const usersWithAdv = await UserGroup.find({ 'advertencias.0': { $exists: true } })
+                .sort({ fandom: 1, _id: 1 })
+                .select('_id userId personaje advertencias')
+                .lean();
+
             if (num < currentOffset + usersWithAdv.length) {
                 const uIdx = num - currentOffset;
                 const ug = usersWithAdv[uIdx];
+                const jidClean = ug.userId.split('@')[0];
                 
                 if (advIndex !== null && advIndex >= 0 && advIndex < ug.advertencias.length) {
                     const userGroupDoc = await UserGroup.findById(ug._id);
                     userGroupDoc.advertencias.splice(advIndex, 1);
                     await userGroupDoc.save();
-                    return reply(fmt.aviso(`Advertencia #${advIndex + 1} de @${ug.userId.split('@')[0]} eliminada.`));
+
+                    return sock.sendMessage(m.key.remoteJid, { 
+                        text: fmt.aviso(`Advertencia #${advIndex + 1} de @${jidClean} eliminada.`), 
+                        mentions: [ug.userId] 
+                    }, { quoted: m });
                 } else {
                     const userGroupDoc = await UserGroup.findById(ug._id);
-                    userGroupDoc.advertencias.pop(); 
+                    userGroupDoc.advertencias.pop();
                     await userGroupDoc.save();
-                    return reply(fmt.aviso(`Última advertencia de @${ug.userId.split('@')[0]} eliminada.`));
+
+                    return sock.sendMessage(m.key.remoteJid, { 
+                        text: fmt.aviso(`Última advertencia de @${jidClean} eliminada.`), 
+                        mentions: [ug.userId] 
+                    }, { quoted: m });
                 }
             }
 

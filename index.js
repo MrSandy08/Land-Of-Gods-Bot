@@ -2,9 +2,11 @@ const {
   default: makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  useMultiFileAuthState,
   Browsers,
-  jidDecode
+  jidDecode,
+  BufferJSON,
+  initAuthCreds: InitAuthCreds,
+  proto
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const P = require('pino');
@@ -14,15 +16,13 @@ const connectDB = require('./src/database');
 const User = require('./src/models/User');
 const Config = require('./src/models/Config');
 const Group = require('./src/models/Group');
+const Auth = require('./src/models/Auth');
 const handleCommand = require('./src/commands');
 const moment = require('moment');
 const fmt = require('./format');
-const fs = require('fs');
-const path = require('path');
 const UserGroup = require('./src/models/UserGroup');
-
-// Definimos la carpeta local de la sesión
-const authFolder = path.join(__dirname, 'auth_info_baileys');
+const cron = require('node-cron');
+const redisClient = require('./src/redisClient');
 
 // Anti-spam: Historial de mensajes en memoria por grupo y usuario
 const msgHistory = new Map();
@@ -36,12 +36,92 @@ const app = express();
 const PORT = process.env.PORT || 7860;
 
 app.get('/', (req, res) => {
-  res.send(`Mini-Beyonder está en línea y procesando el multiverso 🌌\n\nCódigo de vinculación: ${pairingCode}`);
+  res.send(`Land of Gods Bot está en línea 🌌\n\nCódigo de vinculación: ${pairingCode}`);
 });
 
 app.listen(PORT, () => {
   console.log(`[SERVER] Puerto web activado correctamente en el puerto ${PORT}`);
 });
+
+// Función para gestionar el estado de autenticación en MongoDB
+async function useMongoDBAuthState() {
+  const writeData = async (data, key) => {
+    try {
+      // Convertimos a JSON seguro (manejando buffers y tipos específicos)
+      const value = JSON.stringify(data, BufferJSON.replacer);
+      await Auth.findOneAndUpdate(
+        { _id: key },
+        { value },
+        { upsert: true, new: true }
+      );
+    } catch (err) {
+      console.error(`[AUTH] Error al escribir clave ${key}:`, err);
+    }
+  };
+
+  const readData = async (key) => {
+    try {
+      const doc = await Auth.findById(key);
+      if (!doc) return null;
+      return JSON.parse(doc.value, BufferJSON.reviver);
+    } catch (err) {
+      console.error(`[AUTH] Error al leer clave ${key}:`, err);
+      return null;
+    }
+  };
+
+  const removeData = async (key) => {
+    try {
+      await Auth.findByIdAndDelete(key);
+    } catch (err) {
+      console.error(`[AUTH] Error al eliminar clave ${key}:`, err);
+    }
+  };
+
+  // Intentamos recuperar las credenciales principales (creds)
+  let creds = await readData('creds');
+  if (!creds) {
+    creds = InitAuthCreds();
+    await writeData(creds, 'creds');
+  }
+
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => {
+          const data = {};
+          for (const id of ids) {
+            let value = await readData(`${type}-${id}`);
+            if (value) {
+              if (type === 'app-state-sync-key') {
+                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+              }
+              data[id] = value;
+            }
+          }
+          return data;
+        },
+        set: async (data) => {
+          for (const category in data) {
+            for (const id in data[category]) {
+              const value = data[category][id];
+              const key = `${category}-${id}`;
+              if (value) {
+                await writeData(value, key);
+              } else {
+                await removeData(key);
+              }
+            }
+          }
+        }
+      }
+    },
+    saveCreds: async () => {
+      await writeData(creds, 'creds');
+    }
+  };
+}
 
 // Función para evaluar antispam
 const handleAntispam = (m, config, groupId) => {
@@ -92,13 +172,13 @@ async function startBot() {
   } catch (err) {
     console.error('Error al conectar a la base de datos:', err);
     pairingCode = "Error de base de datos. Revisa MONGO_URI.";
-    return; // Detener inicio si no hay base de datos
+    return;
   }
 
-  console.log("Iniciando bot con sesión local estándar...");
+  console.log("Iniciando bot con sesión en la nube (MongoDB)...");
 
-  // 1. Inicializa las credenciales en la carpeta local
-  const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+  // 1. Inicializa las credenciales desde MongoDB
+  const { state, saveCreds } = await useMongoDBAuthState();
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
@@ -106,15 +186,40 @@ async function startBot() {
     logger: P({ level: 'silent' }),
     printQRInTerminal: false,
     auth: state,
-    browser: Browsers.ubuntu('Chrome'), // Forma nativa y actualizada de Baileys para el bropwser
+    browser: Browsers.ubuntu('Chrome'),
     getMessage: async (key) => {
-      // Retornar un mensaje vacío ayuda a mitigar algunos errores de desencriptación (Bad MAC)
-      return { conversation: 'sua-bot' };
+      return { conversation: 'land-of-gods-bot' };
     }
   });
 
   // Programar job diario (cada 24h)
   setInterval(() => dailyJob(sock), 24 * 60 * 60 * 1000);
+
+  // Job para limpiar usuarios que se fueron hace más de 2 semanas
+  cron.schedule('0 0 * * *', async () => {
+    console.log('[Limpiador] Iniciando revisión diaria de usuarios inactivos...');
+    try {
+      const haceDosSemanas = new Date();
+      haceDosSemanas.setDate(haceDosSemanas.getDate() - 14);
+
+      const usuariosParaBorrar = await UserGroup.find({
+        fechaSalida: { $ne: null, $lt: haceDosSemanas }
+      });
+
+      if (usuariosParaBorrar.length === 0) {
+        console.log('[Limpiador] No hay datos antiguos para borrar hoy.');
+        return;
+      }
+
+      for (const ug of usuariosParaBorrar) {
+        await UserGroup.findByIdAndDelete(ug._id);
+      }
+
+      console.log(`[Limpiador] Se han limpiado los datos de ${usuariosParaBorrar.length} usuario(s) que dejaron la comunidad hace más de 2 semanas.`);
+    } catch (err) {
+      console.error('[Limpiador] Error al ejecutar la limpieza automática:', err);
+    }
+  });
 
   // 2. Escucha de eventos de conexión
   sock.ev.on('connection.update', async (update) => {
@@ -161,18 +266,15 @@ async function startBot() {
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
       console.log(`Conexión cerrada. Razón de Baileys: ${reason}`);
 
-      // Si es un error de desvinculación (401), cierre de sesión o error crítico 515 sin estar logueados
       if (reason === DisconnectReason.loggedOut || reason === 401 || (reason === 515 && !state.creds.registered)) {
-        console.log('Sesión inválida, corrupta o rechazada por el servidor. Limpiando caché local...');
+        console.log('Sesión inválida o rechazada. Limpiando credenciales en la nube...');
         
-        if (fs.existsSync(authFolder)) {
-          fs.rmSync(authFolder, { recursive: true, force: true });
-        }
+        // Limpiamos la colección de autenticación en MongoDB
+        await Auth.deleteMany({});
         
-        console.log('🛑 Proceso detenido para evitar bucles. Por favor, ejecuta de nuevo "npm start" de forma limpia.');
-        process.exit(1); // Detiene el bot por completo de forma controlada
+        console.log('🛑 Sesión eliminada de la base de datos. Reinicia el bot para generar un nuevo código.');
+        process.exit(1);
       } else {
-        // Errores de red comunes (timeout, caídas de internet transitorias)
         console.log('Desconexión temporal de red, intentando reconectar en 7 segundos...');
         isPairingInProgress = false;
         setTimeout(() => startBot(), 7000);
@@ -184,31 +286,41 @@ async function startBot() {
   sock.ev.on('creds.update', saveCreds);
 
   // Evento: Participantes del grupo cambian
-  sock.ev.on('group-participants.update', async (anu) => {
+  sock.ev.on('group-participants.update', async (update) => {
+    const { id: groupId, participants, action } = update;
     try {
-      const { id, participants, action } = anu;
-      await Group.findOneAndUpdate({ _id: id }, { _id: id }, { upsert: true });
+      await Group.findOneAndUpdate({ _id: groupId }, { _id: groupId }, { upsert: true });
 
-      for (let num of participants) {
-        if (action === 'remove') {
-          const user = await User.findById(num);
-          if (user && user.personaje) {
-            const char = user.personaje;
-            const fandom = user.fandom;
-            
-            user.personaje = null;
-            user.fandom = null;
-            await user.save();
+      if (action === 'remove') {
+        for (const userId of participants) {
+          try {
+            const tg = await UserGroup.findOne({ userId });
 
-            const text = fmt.header('Notificación de Salida') + '\n' +
-                         fmt.aviso(`El usuario ${fmt.mention(num)} ha dejado el grupo/comunidad.\n\nEl personaje *${char}* (${fandom}) queda *LIBRE*.`);
-            
-            await sock.sendMessage(id, { text, mentions: [num] });
-            
-            const groups = await Group.find({ _id: { $ne: id } });
-            for (let g of groups) {
-              await sock.sendMessage(g._id, { text, mentions: [num] }).catch(() => null);
+            if (tg) {
+              const char = tg.personaje;
+              const fandom = tg.fandom;
+
+              tg.personaje = null;
+              tg.fandom = 'General';
+              tg.fechaSalida = new Date();
+              await tg.save();
+
+              console.log(`[Ecosistema] @${userId.split('@')[0]} salió del grupo. Personaje liberado y temporizador de 2 semanas iniciado.`);
+
+              if (char) {
+                const text = fmt.header('Notificación de Salida') + '\n' +
+                             fmt.aviso(`El usuario @${userId.split('@')[0]} ha dejado el grupo/comunidad.\n\nEl personaje *${char}* (${fandom}) queda *LIBRE*.`);
+
+                await sock.sendMessage(groupId, { text, mentions: [userId] });
+
+                const groups = await Group.find({ _id: { $ne: groupId } });
+                for (let g of groups) {
+                  await sock.sendMessage(g._id, { text, mentions: [userId] }).catch(() => null);
+                }
+              }
             }
+          } catch (err) {
+            console.error('Error al procesar salida de usuario:', err);
           }
         }
       }
@@ -228,8 +340,11 @@ async function startBot() {
       const sender = m.key.participant || remoteJid;
       const isGroup = remoteJid.endsWith('@g.us');
 
+      let groupDoc = null;
+      let comunidadId = null;
       if (isGroup) {
-        await Group.findOneAndUpdate({ _id: remoteJid }, { _id: remoteJid }, { upsert: true });
+        groupDoc = await Group.findOneAndUpdate({ _id: remoteJid }, { _id: remoteJid }, { upsert: true, new: true });
+        comunidadId = groupDoc?.comunidadId;
       }
       const body = m.message.conversation || m.message.extendedTextMessage?.text || '';
       const prefix = '!';
@@ -240,20 +355,166 @@ async function startBot() {
       if (!user) {
         user = new User({ _id: sender });
       }
+      let userGroup;
       
-      let userGroup = await UserGroup.getOrCreate(sender, remoteJid);
-      userGroup.mensajes += 1;
-      userGroup.lastSeen = new Date();
-      await userGroup.save();
+      if (isGroup) {
+        userGroup = await UserGroup.getOrCreate(sender, remoteJid, comunidadId);
+        userGroup.mensajes += 1;
+        userGroup.lastSeen = new Date();
+        if (userGroup.fechaSalida) {
+          userGroup.fechaSalida = null;
+        }
+        await userGroup.save();
+      }
       
-      // 2. Control Anti-spam
+      // 2. Control Anti-spam y Flood
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
+      
+      // Control de Flood (cierre automático de grupo)
+      if (isGroup) {
+        const yaEstaCerrando = await redisClient.get(`lock:mute:${remoteJid}`);
+        
+        if (!yaEstaCerrando) {
+          const llaveFloodGlobal = `flood:${remoteJid}`;
+          const totalMensajesGrupo = await redisClient.incr(llaveFloodGlobal);
+          
+          if (totalMensajesGrupo === 1) {
+            await redisClient.expire(llaveFloodGlobal, config.antispam?.seconds || 4);
+          }
+
+          const limiteConfigurado = config.antispam?.limit || 6;
+          if (totalMensajesGrupo > limiteConfigurado && config.antispam?.enabled) {
+            await redisClient.setEx(`lock:mute:${remoteJid}`, 35, 'true');
+            
+            try {
+              await sock.groupSettingUpdate(remoteJid, 'announcement');
+              
+              const u = await UserGroup.getOrCreate(sender);
+              const razon = `Hacer flood/spam en el chat.`;
+              
+              u.advertencias.push({
+                razon,
+                admin: 'SYSTEM_ANTI_FLOOD'
+              });
+              await u.save();
+
+              const jidClean = sender.split('@')[0];
+              let textoAviso = `🚨 *CONTROL DE FLOOD* 🚨\n\n` +
+                               `Se ha detectado un flujo excesivo de mensajes. El grupo permanecerá cerrado durante *30 segundos*.\n\n` +
+                               `⚠️ *Sanción Automática (Sin Expulsión):*\n` +
+                               `• *Usuario:* @${jidClean}\n` +
+                               `• *Motivo:* Flood masivo en el chat.\n` +
+                               `• *Advertencias totales:* ${u.advertencias.length}/${config.maxAdvertencias}`;
+
+              await sock.sendMessage(m.key.remoteJid, { text: textoAviso, mentions: [sender] }, { quoted: m });
+
+              setTimeout(async () => {
+                try {
+                  await sock.groupSettingUpdate(remoteJid, 'not_announcement');
+                  
+                  await sock.sendMessage(remoteJid, {
+                    text: `✅ *CHAT REABIERTO*\n\nEl grupo ha sido abierto nuevamente. Por favor, mantengan el orden o el sistema volverá a actuar.`
+                  });
+                  
+                  await redisClient.del(llaveFloodGlobal);
+                } catch (err) {
+                  console.error('Error al reabrir el grupo automáticamente:', err);
+                }
+              }, 30000);
+
+            } catch (err) {
+              console.error('Error en el proceso de muteo por flood:', err);
+              await redisClient.del(`lock:mute:${remoteJid}`);
+            }
+          }
+        }
+      }
+
       const isSpamming = handleAntispam(m, config, remoteJid);
       if (isSpamming) {
         return;
       }
 
-      // 3. Manejo de Comandos
+      // --- LISTENERS ESPECIALES (Economía y Tiendas) ---
+      const Tienda = require('./src/models/Tienda');
+      
+      // 1. Usuario en modo "diseño de tienda"
+      if (handleCommand.modoDiseñoTienda && handleCommand.modoDiseñoTienda.has(sender)) {
+        try {
+          let tienda = await Tienda.findOne({ ownerId: sender });
+          if (!tienda) tienda = new Tienda({ ownerId: sender });
+          
+          tienda.diseñoLibre = body;
+          await tienda.save();
+          
+          handleCommand.modoDiseñoTienda.delete(sender);
+          await sock.sendMessage(remoteJid, { text: '✅ Diseño de tienda guardado!', mentions: [sender] }, { quoted: m });
+          return;
+        } catch (err) {
+          console.error('Error guardando diseño de tienda:', err);
+        }
+      }
+
+      // 2. Comandos !aceptar o !rechazar en respuesta a transacción pendiente
+      if (isCommand) {
+        const args = body.slice(prefix.length).trim().split(/ +/);
+        const command = args.shift().toLowerCase();
+        
+        if (command === 'aceptar' || command === 'rechazar') {
+          // Verificar que el mensaje responda a un mensaje del bot (Baileys quoted message)
+          const quotedMessage = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          const quotedParticipant = m.message?.extendedTextMessage?.contextInfo?.participant;
+          
+          if (quotedParticipant && quotedParticipant.endsWith('@s.whatsapp.net')) {
+            // Obtener el ID del mensaje citado
+            const quotedMessageId = m.message?.extendedTextMessage?.contextInfo?.stanzaId;
+            
+            if (handleCommand.transaccionesPendientes && handleCommand.transaccionesPendientes.has(quotedMessageId)) {
+              const transaccion = handleCommand.transaccionesPendientes.get(quotedMessageId);
+              
+              // Verificar que quien responde sea el vendedor
+              if (sender === transaccion.vendedorId) {
+                if (command === 'aceptar') {
+                  // Realizar la transacción
+                  let comprador = await User.findById(transaccion.compradorId);
+                  if (!comprador) comprador = new User({ _id: transaccion.compradorId });
+                  
+                  let vendedor = await User.findById(transaccion.vendedorId);
+                  if (!vendedor) vendedor = new User({ _id: transaccion.vendedorId });
+                  
+                  if (comprador.saldo >= transaccion.monto) {
+                    comprador.saldo -= transaccion.monto;
+                    vendedor.saldo += transaccion.monto;
+                    await comprador.save();
+                    await vendedor.save();
+                    
+                    await sock.sendMessage(remoteJid, {
+                      text: `✅ Venta confirmada! @${transaccion.compradorId.split('@')[0]} compró '${transaccion.producto}' de @${transaccion.vendedorId.split('@')[0]} por ${transaccion.monto} monedas.`,
+                      mentions: [transaccion.compradorId, transaccion.vendedorId]
+                    }, { quoted: m });
+                  } else {
+                    await sock.sendMessage(remoteJid, {
+                      text: '❌ El comprador no tiene suficiente saldo.',
+                      mentions: [transaccion.compradorId]
+                    }, { quoted: m });
+                  }
+                } else {
+                  await sock.sendMessage(remoteJid, {
+                    text: `❌ Venta de '${transaccion.producto}' cancelada.`,
+                    mentions: [transaccion.compradorId, transaccion.vendedorId]
+                  }, { quoted: m });
+                }
+                
+                // Eliminar la transacción pendiente
+                handleCommand.transaccionesPendientes.delete(quotedMessageId);
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Manejo normal de comandos
       if (isCommand) {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();

@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const UserGroup = require('../models/UserGroup');
+const Pedido = require('../models/Pedido');
+const Sugerencia = require('../models/Sugerencia');
 const moment = require('moment');
 const fmt = require('../../format');
 const { isAdmin, getUserId } = require('../utils');
@@ -20,7 +22,7 @@ module.exports = {
             }
             const razon = razonArgs.join(' ');
 
-            const u = await UserGroup.getOrCreate(targetId, groupId);
+            const u = await UserGroup.getOrCreate(targetId);
             u.excusa = {
                 fin: moment().add(dias, 'days').toDate(),
                 razon,
@@ -41,8 +43,14 @@ module.exports = {
 
     excusas: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
-            const users = await UserGroup.find({ groupId, 'excusa.activa': true }).lean();
+            const users = await UserGroup.find({ 'excusa.activa': true })
+                .select('userId personaje excusa')
+                .lean();
             if (users.length === 0) return reply(fmt.aviso('No hay excusas activas en este grupo.'));
+
+            const pedidosCount = await Pedido.countDocuments();
+            const sugesCount = await Sugerencia.countDocuments();
+            let globalIndex = pedidosCount + sugesCount + 1;
 
             let text = fmt.header();
             text += fmt.listSection('EXCUSAS ACTUALES');
@@ -52,11 +60,12 @@ module.exports = {
                 const diasRestantes = moment(ug.excusa.fin).diff(moment(), 'days');
                 const jidClean = ug.userId.split('@')[0];
                 
-                text += fmt.listItem(`[#${i + 1}] @${jidClean} - ${ug.personaje}\n`) +
+                text += fmt.listItem(`[#${globalIndex}] @${jidClean} - ${ug.personaje}`) +
                         `       𝄄   _Motivo: ${ug.excusa.razon}_\n` +
-                        `       𝄄   _Tiempo restante: ${diasRestantes > 0 ? `${diasRestantes} días` : 'Último día'}_\n\n`;
+                        `       𝄄   _Tiempo restante: ${diasRestantes > 0 ? `${diasRestantes} días` : 'Último día'}_\n`;
                 
                 mentions.push(ug.userId);
+                globalIndex++;
             });
 
             await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });

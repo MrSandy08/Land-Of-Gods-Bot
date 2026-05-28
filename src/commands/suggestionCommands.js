@@ -1,4 +1,5 @@
 const Sugerencia = require('../models/Sugerencia');
+const Pedido = require('../models/Pedido');
 const fmt = require('../../format');
 
 module.exports = {
@@ -24,16 +25,19 @@ module.exports = {
 
     sugerencias: async (sock, m, args, currentUser, config, reply) => {
         try {
-            const suges = await Sugerencia.find().lean();
+            const suges = await Sugerencia.find().select('_id user personaje contenido').lean();
             if (suges.length === 0) return reply(fmt.aviso('No hay sugerencias.'));
+            
+            const pedidosCount = await Pedido.countDocuments();
             
             let text = fmt.header();
             text += fmt.listSection('BUZÓN DE SUGERENCIAS');
             const mentions = [];
 
             suges.forEach((s, i) => {
+                const globalIndex = pedidosCount + i + 1;
                 const jidClean = s.user.split('@')[0];
-                text += fmt.listItem(`[#${i + 1}] @${jidClean} - ${s.personaje}\n`) + `       𝄄   _${s.contenido}_\n\n`;
+                text += fmt.listItem(`[#${globalIndex}] @${jidClean} - ${s.personaje}\n`) + `       𝄄   _${s.contenido}_\n\n`;
                 mentions.push(s.user);
             });
 

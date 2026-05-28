@@ -1,7 +1,7 @@
 {
-  "name": "sua-bot",
+  "name": "land-of-gods-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Bot for Roleplay Team Organization",
+  "description": "WhatsApp Bot for Land of Gods Roleplay Organization",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,9 +11,12 @@
     "axios": "^1.16.1",
     "dotenv": "^16.3.1",
     "express": "^5.2.1",
+    "form-data": "^4.0.5",
+    "ioredis": "^5.11.0",
     "link-preview-js": "^3.0.4",
     "moment": "^2.29.4",
     "mongoose": "^8.0.0",
+    "node-cron": "^4.2.1",
     "pino": "^8.16.1",
     "qrcode-terminal": "^0.12.0"
   }

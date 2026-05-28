@@ -1,10 +1,12 @@
 const mongoose = require('mongoose');
 
 const UserGroupSchema = new mongoose.Schema({
-  _id: { type: String, required: true }, // userId + '-' + groupId
+  _id: { type: String, required: true }, // userId (global)
   userId: { type: String, required: true },
-  groupId: { type: String, required: true },
+  groupId: { type: String, default: null }, // For standalone groups
+  comunidadId: { type: String, default: null }, // For community groups
   createdAt: { type: Date, default: Date.now },
+  fechaSalida: { type: Date, default: null },
   
   // Personaje y Fandom
   personaje: { type: String, default: null },
@@ -27,50 +29,33 @@ const UserGroupSchema = new mongoose.Schema({
     activa: { type: Boolean, default: false }
   },
   
-  // Última vez visto (en este grupo)
-  lastSeen: { type: Date, default: Date.now },
-  
-  // ────────────── SISTEMA DE ECONOMÍA ──────────────
-  money: { type: Number, default: 0 },
-  bank: { type: Number, default: 0 },
-  cooldowns: {
-    work: { type: Date, default: null },
-    slut: { type: Date, default: null },
-    daily: { type: Date, default: null },
-    minar: { type: Date, default: null },
-    pescar: { type: Date, default: null },
-    atracar: { type: Date, default: null },
-    cazar: { type: Date, default: null },
-    extorsionar: { type: Date, default: null },
-    suerte: { type: Date, default: null },
-    crimen: { type: Date, default: null },
-    robar: { type: Date, default: null },
-    prostituirse: { type: Date, default: null }
-  },
-  isJailed: { type: Boolean, default: false },
-  jailUntil: { type: Date, default: null },
-  dailyStreak: { type: Number, default: 0 },
-  lastDaily: { type: Date, default: null },
-  
-  // ────────────── SISTEMA DE ITS ──────────────
-  its: { type: String, default: null },
-  
-  // ────────────── SISTEMA DE FIANZA INCREMENTAL ──────────────
-  jailCount: { type: Number, default: 0 }
+  // Última vez visto
+  lastSeen: { type: Date, default: Date.now }
 });
 
-// Método para obtener o crear el UserGroup
-UserGroupSchema.statics.getOrCreate = async function(userId, groupId) {
-  const id = `${userId}-${groupId}`;
-  let userGroup = await this.findById(id);
+// Método para obtener o crear el UserGroup (global, con groupId/comunidadId)
+UserGroupSchema.statics.getOrCreate = async function(userId, groupId = null, comunidadId = null) {
+  let userGroup = await this.findById(userId);
   
   if (!userGroup) {
     userGroup = new this({
-      _id: id,
+      _id: userId,
       userId,
-      groupId
+      groupId,
+      comunidadId
     });
     await userGroup.save();
+  } else {
+    // Update groupId and comunidadId if needed
+    if (groupId && userGroup.groupId !== groupId) {
+      userGroup.groupId = groupId;
+    }
+    if (comunidadId && userGroup.comunidadId !== comunidadId) {
+      userGroup.comunidadId = comunidadId;
+    }
+    if (userGroup.isModified()) {
+      await userGroup.save();
+    }
   }
   
   return userGroup;

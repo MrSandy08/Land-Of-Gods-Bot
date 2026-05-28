@@ -1,5 +1,5 @@
 ---
-title: MiniBeyonder
+title: Land of Gods Bot
 emoji: 🤖
 colorFrom: blue
 colorTo: purple
@@ -7,9 +7,9 @@ sdk: docker
 pinned: false
 ---
 
-# SUA-Bot - Roleplay Organization
+# Land of Gods Bot - Roleplay Organization
 
-WhatsApp Bot specialized in roleplay team organization.
+WhatsApp Bot specialized in Land of Gods roleplay team organization.
 
 ## Features
 - Character Assignment
