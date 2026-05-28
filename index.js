@@ -518,7 +518,14 @@ async function startBot() {
       if (isCommand) {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
-        await handleCommand(sock, m, command, args, user, config, remoteJid, sender);
+        
+        console.log(`[COMANDO] Ejecutando: ${prefix}${command} enviado por ${sender}`);
+        
+        try {
+          await handleCommand(sock, m, command, args, user, config, remoteJid, sender);
+        } catch (cmdErr) {
+          console.error(`❌ Error interno al ejecutar el comando ${command}:`, cmdErr);
+        }
       } else {
         await user.save();
       }

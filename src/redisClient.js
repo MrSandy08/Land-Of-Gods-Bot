@@ -1,35 +1,49 @@
+// src/redisClient.js
 const Redis = require('ioredis');
 
-const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const redisUrl = process.env.REDIS_URL;
 
 if (!redisUrl) {
-  console.error('❌ Falta la variable REDIS_URL en el entorno.');
+  console.error('❌ Falta la variable REDIS_URL en las variables de entorno de Render.');
 }
 
 const redisClient = new Redis(redisUrl, {
-  // 1. Evita que ioredis tire la app cuando se agotan los reintentos de un comando pesado
+  // 1. Evita que los comandos fallen inmediatamente si el socket se rompe (EPIPE/ECONNRESET)
+  // ioredis guardará el comando en cola y lo ejecutará en cuanto la reconexión sea exitosa
   maxRetriesPerRequest: null,
-  
-  // 2. Controla la estrategia de reconexión del servidor completo
+
+  // 2. Estrategia de reconexión rápida ante caídas de red
   retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000); // Reintenta rápido pero con un tope de 2 segundos
-    return delay;
+    // Reintenta de forma progresiva: 50ms, 100ms... hasta un tope de 2 segundos
+    return Math.min(times * 50, 2000);
   },
+
+  // 3. Configuración de sockets TCP nativos para mantener la línea ocupada
+  connectTimeout: 10000, // 10 segundos de tiempo de espera máximo para conectar
+  disconnectTimeout: 2000,
   
-  // 3. Mantiene la conexión TCP viva con Upstash enviando paquetes sutiles de fondo
-  keepAlive: 10000, // 10 segundos
+  // Opciones de conexión TLS/Net
+  tls: redisUrl.startsWith('rediss://') ? {} : undefined, // Manejo correcto si usas SSL
 });
 
-redisClient.on('connect', () => {
-  // Quitamos el log repetitivo para que no te sature la consola cada vez que reconecte de fondo
-  // console.log('🚀 Conectado exitosamente a la memoria RAM de Redis (vía ioredis)');
-});
-
-redisClient.on('error', (err) => {
-  // Solo loguear errores graves que no sean cierres de sockets comunes (ECONNRESET)
-  if (err.code !== 'ECONNRESET') {
-    console.error('❌ Error en el cliente de Redis:', err.message);
+// 🛠️ CONFIGURACIÓN CRÍTICA PARA EVITAR EPIPE Y ECONNRESET
+// Habilitamos Keep-Alive directamente en el socket TCP interno de ioredis
+redisClient.on('select', () => {
+  const stream = redisClient.stream;
+  if (stream && typeof stream.setKeepAlive === 'function') {
+    // Envía un paquete sutil cada 5 segundos para decirle a Upstash "sigo vivo, no me cierres"
+    stream.setKeepAlive(true, 5000);
   }
+});
+
+// Manejador de errores silencioso para flujos de red comunes
+redisClient.on('error', (err) => {
+  // Ignoramos los errores comunes de desconexión por inactividad en la consola
+  // para que no saturen tus logs de Render, ya que ioredis los reconecta solos.
+  if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
+    return;
+  }
+  console.error('❌ Error crítico en el cliente de Redis:', err.message);
 });
 
 module.exports = redisClient;
