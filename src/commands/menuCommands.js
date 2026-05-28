@@ -17,13 +17,16 @@ module.exports = {
             text += fmt.cmdLine('💰', 'saldo', 'Ver tu saldo actual');
             text += fmt.cmdLine('💸', 'transferir', 'Transferir dinero a alguien');
             text += fmt.cmdLine('🛒', 'comprar', 'Comprar en una tienda');
-            text += fmt.cmdLine('🏪', 'ver-tienda', 'Ver la tienda de alguien');
+            text += fmt.cmdLine('🏪', 'tienda', 'Ver la tienda de alguien');
+            text += fmt.cmdLine('🏪', 'ver-tienda', '(Legacy) Ver la tienda de alguien');
 
             text += fmt.category('Mi Tienda');
+            text += fmt.cmdLine('🏪', 'mitienda', 'Ver y gestionar tu tienda');
+            text += fmt.cmdLine('🎨', 'mitienda diseñar', 'Diseñar tu tienda con texto e imagen');
             text += fmt.cmdLine('🔓', 'mitienda abrir', 'Abrir tu tienda');
             text += fmt.cmdLine('🔒', 'mitienda cerrar', 'Cerrar tu tienda');
-            text += fmt.cmdLine('🎨', 'mitienda diseño', 'Configurar el diseño de tu tienda');
-            text += fmt.cmdLine('🖼️', 'mitienda set-banner', 'Establecer banner de tienda');
+            text += fmt.cmdLine('🎨', 'mitienda diseño', '(Legacy) Configurar el diseño de tu tienda');
+            text += fmt.cmdLine('🖼️', 'mitienda set-banner', '(Legacy) Establecer banner de tienda');
             text += fmt.cmdLine('➕', 'mitienda añadir', 'Añadir producto a tu tienda');
 
             text += fmt.category('Actividad');
