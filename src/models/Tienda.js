@@ -12,4 +12,10 @@ const TiendaSchema = new mongoose.Schema({
 // Crear un índice compuesto único para evitar tiendas duplicadas del mismo usuario en el mismo grupo
 TiendaSchema.index({ ownerId: 1, groupId: 1 }, { unique: true });
 
-module.exports = mongoose.model('Tienda', TiendaSchema);
+const Tienda = mongoose.model('Tienda', TiendaSchema);
+
+// 👇 ESTA LÍNEA ES LA QUE HACE LA MAGIA 👇
+// Borrará el índice viejo (ownerId_1) y aplicará el nuevo correctamente.
+Tienda.syncIndexes().then(() => console.log('✅ Índices de la base de datos sincronizados con éxito.'));
+
+module.exports = Tienda;
