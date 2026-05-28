@@ -61,7 +61,7 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
     const comandosConTexto = [
         'menu', 'top', 'low', 'inactivos', 'advertencias',
         'personajes', 'pedidos', 'sinpersonaje', 'sugerencias',
-        'mitienda', 'tienda', 'saldo'
+        'mitienda', 'tienda', 'saldo', 'mitienda diseñar', 'mitienda añadir'
     ];
 
     let reply;

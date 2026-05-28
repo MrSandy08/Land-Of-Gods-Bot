@@ -213,8 +213,11 @@ module.exports = {
       // Subcomando: !mitienda diseñar [texto]
       if (subcomando === 'diseñar') {
         const diseño = args.slice(1).join(' ');
-        const tieneImagen = m.message?.imageMessage || 
-                            m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
+        
+        // Extraemos los mensajes multimedia de forma segura evaluando ambas estructuras
+        const imgMessage = m.message?.imageMessage;
+        const quotedImgMessage = m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
+        const tieneImagen = imgMessage || quotedImgMessage;
 
         if (!diseño && !tieneImagen) {
           return reply(fmt.aviso('Uso: !mitienda diseñar [texto de tu tienda] (Puedes adjuntar o citar una foto)'));
@@ -224,19 +227,31 @@ module.exports = {
         if (!tienda) tienda = new Tienda({ ownerId: sender, groupId: groupId });
 
         if (tieneImagen) {
+          // NOTA: Como la función centralizada 'reply' ahora es un emoji, enviamos un texto directo
+          // usando sock.sendMessage para notificar al usuario de forma tradicional sin romper el flujo.
           await sock.sendMessage(groupId, { text: '⏳ _Subiendo imagen de tu comercio a la nube..._' }, { quoted: m });
+          
           try {
-            let mediaMessage = m.message?.imageMessage ? m : { message: m.message.extendedTextMessage.contextInfo.quotedMessage };
+            // Reconstrucción estricta del objeto de mensaje para Baileys
+            let mediaMessage = imgMessage ? m : { 
+              message: m.message.extendedTextMessage.contextInfo.quotedMessage 
+            };
+            
+            // Forzamos la descarga del buffer multimedia
             const buffer = await downloadMediaMessage(mediaMessage, 'buffer', {}, { logger: console });
+
+            if (!buffer) {
+              return reply(fmt.aviso('Error: No se pudo generar el búfer de la imagen.'));
+            }
 
             const urlSubida = await subirAImgBB(buffer);
             if (urlSubida) {
               tienda.imagenUrl = urlSubida;
             } else {
-              return reply(fmt.aviso('No se pudo procesar la imagen. Inténtalo de nuevo.'));
+              return reply(fmt.aviso('No se pudo procesar la imagen con ImgBB.'));
             }
           } catch (errImg) {
-            console.error('Error descargando multimedia:', errImg);
+            console.error('Error descargando multimedia en Baileys:', errImg);
             return reply(fmt.aviso('Error crítico al procesar el archivo de imagen.'));
           }
         }
