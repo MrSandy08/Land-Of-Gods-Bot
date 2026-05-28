@@ -94,18 +94,21 @@ module.exports = {
 
   'tienda aprobar': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
+      // Validar si la economía está encendida en este grupo
+      if (!config || !config.economy) return reply(fmt.aviso('El sistema de tiendas no está activo en este grupo.'));
       if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins.'));
       
       const targetJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || sender;
 
-      let tienda = await Tienda.findOne({ ownerId: targetJid });
+      // Buscar por dueño Y grupo
+      let tienda = await Tienda.findOne({ ownerId: targetJid, groupId: groupId });
       if (!tienda) {
-        tienda = new Tienda({ ownerId: targetJid, diseñoLibre: '🏪 *Tienda en desarrollo*' });
+        tienda = new Tienda({ ownerId: targetJid, groupId: groupId, diseñoLibre: '🏪 *Tienda en desarrollo*' });
       }
       tienda.aprobada = true;
       await tienda.save();
 
-      await sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`Tienda de @${targetJid.split('@')[0]} aprobada con éxito.`), mentions: [targetJid] }, { quoted: m });
+      await sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`Tienda de @${targetJid.split('@')[0]} aprobada con éxito en este grupo.`), mentions: [targetJid] }, { quoted: m });
     } catch (err) {
       console.error('Error en !tienda aprobar:', err);
       reply(fmt.aviso('Error al aprobar la tienda.'));
@@ -166,6 +169,9 @@ module.exports = {
 
   mitienda: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
+      // Validar si la economía está encendida en este grupo
+      if (!config || !config.economy) return reply(fmt.aviso('El sistema de tiendas no está activo en este grupo.'));
+
       const subcomando = args[0]?.toLowerCase();
 
       // Manejar comandos obsoletos
@@ -183,8 +189,8 @@ module.exports = {
           return reply(fmt.aviso('Uso: !mitienda diseñar [texto de tu tienda] (Puedes adjuntar o citar una foto)'));
         }
 
-        let tienda = await Tienda.findOne({ ownerId: sender });
-        if (!tienda) tienda = new Tienda({ ownerId: sender });
+        let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
+        if (!tienda) tienda = new Tienda({ ownerId: sender, groupId: groupId });
 
         if (tieneImagen) {
           await sock.sendMessage(groupId, { text: '⏳ _Subiendo imagen de tu comercio a la nube..._' }, { quoted: m });
@@ -209,14 +215,15 @@ module.exports = {
         }
 
         await tienda.save();
-        return reply('✅ ¡La información visual de tu tienda ha sido actualizada!');
+        return reply('✅ ¡La información visual de tu tienda en este grupo ha sido actualizada!');
       }
 
-      // Visualización base limpia de !mitienda
-      let tienda = await Tienda.findOne({ ownerId: sender });
+      // Visualización base limpia de !mitienda (Filtrado por Grupo)
+      let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
       if (!tienda) {
         tienda = new Tienda({
           ownerId: sender,
+          groupId: groupId,
           diseñoLibre: '🏪 *Nueva Tienda del Olimpo*\n\nUsa `!mitienda diseñar [Productos]` para darle estética.'
         });
         await tienda.save();
@@ -243,13 +250,16 @@ module.exports = {
   tienda: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
       if (args[0] === 'aprobar') return;
+      // Validar si la economía está encendida en este grupo
+      if (!config || !config.economy) return reply(fmt.aviso('El sistema de tiendas no está activo en este grupo.'));
 
       const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
       if (!mentionedJid) return reply(fmt.aviso('Uso: !tienda @usuario'));
 
-      const tienda = await Tienda.findOne({ ownerId: mentionedJid });
+      // Buscar tienda del usuario específica de este grupo
+      const tienda = await Tienda.findOne({ ownerId: mentionedJid, groupId: groupId });
       if (!tienda || !tienda.aprobada) {
-        return reply(fmt.aviso('Este usuario no posee una tienda registrada o activa en el reino.'));
+        return reply(fmt.aviso('Este usuario no posee una tienda registrada o activa en este grupo.'));
       }
 
       const jidClean = mentionedJid.split('@')[0];
@@ -272,6 +282,8 @@ module.exports = {
 
   'mitienda añadir': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
+      // Validar si la economía está encendida en este grupo
+      if (!config || !config.economy) return reply(fmt.aviso('El sistema de tiendas no está activo en este grupo.'));
       if (args.length < 1) return reply(fmt.aviso('Uso: !mitienda añadir [Producto - Precio]'));
       
       const fullText = args.join(' ');
@@ -282,8 +294,8 @@ module.exports = {
       const [, nuevoNombre, nuevoPrecioStr] = nuevoProductoMatch;
       const nuevoPrecio = parseInt(nuevoPrecioStr);
 
-      let tienda = await Tienda.findOne({ ownerId: sender });
-      if (!tienda) tienda = new Tienda({ ownerId: sender });
+      let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
+      if (!tienda) tienda = new Tienda({ ownerId: sender, groupId: groupId });
 
       const lineas = tienda.diseñoLibre.split('\n').filter(linea => linea.trim() !== '');
       
@@ -304,7 +316,7 @@ module.exports = {
       tienda.diseñoLibre = tienda.diseñoLibre ? `${tienda.diseñoLibre}\n${nuevaLinea}` : nuevaLinea;
       await tienda.save();
       
-      reply(fmt.aviso('Producto añadido exitosamente a tu diseño libre!'));
+      reply(fmt.aviso('Producto añadido exitosamente a tu diseño en este grupo!'));
     } catch (err) {
       console.error('Error en !mitienda añadir:', err);
       reply(fmt.aviso('Error al procesar el producto.'));
@@ -315,6 +327,9 @@ module.exports = {
   
   comprar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
+      // Validar si la economía está encendida en este grupo
+      if (!config || !config.economy) return reply(fmt.aviso('El sistema de tiendas no está activo en este grupo.'));
+
       const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
       if (!mentionedJid) return reply(fmt.aviso('Uso: !comprar @vendedor [Nombre del Producto]'));
 
@@ -323,8 +338,9 @@ module.exports = {
 
       if (sender === mentionedJid) return reply(fmt.aviso('No puedes comprar en tu propia tienda.'));
 
-      const tienda = await Tienda.findOne({ ownerId: mentionedJid });
-      if (!tienda || !tienda.aprobada) return reply(fmt.aviso('Este comercio no está activo en el reino.'));
+      // Buscar tienda asociada específicamente al grupo actual
+      const tienda = await Tienda.findOne({ ownerId: mentionedJid, groupId: groupId });
+      if (!tienda || !tienda.aprobada) return reply(fmt.aviso('Este comercio no está activo en este grupo.'));
 
       const lineasTienda = tienda.diseñoLibre.split('\n');
       let productoEncontrado = null;
@@ -352,7 +368,7 @@ module.exports = {
       }
 
       if (!productoEncontrado || precioProducto <= 0) {
-        return reply(fmt.aviso(`El artículo "${nombreProductoBuscado}" no coincide con ningún producto listado.`));
+        return reply(fmt.aviso(`El artículo "${nombreProductoBuscado}" no coincide con ningún producto listado en esta tienda.`));
       }
 
       let comprador = await User.findById(sender);
