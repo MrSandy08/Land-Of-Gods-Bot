@@ -22,10 +22,10 @@ const moment = require('moment');
 const fmt = require('./format');
 const UserGroup = require('./src/models/UserGroup');
 const cron = require('node-cron');
-const redisClient = require('./src/redisClient');
 
 // Anti-spam: Historial de mensajes en memoria por grupo y usuario
 const msgHistory = new Map();
+const floodCounters = new Map();
 
 // Variable para guardar el código de vinculación
 let pairingCode = "Esperando código...";
@@ -370,21 +370,25 @@ async function startBot() {
       // 2. Control Anti-spam y Flood
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
       
-      // Control de Flood (cierre automático de grupo)
+      // Control de Flood (cierre automático de grupo) - En memoria local
       if (isGroup) {
-        const yaEstaCerrando = await redisClient.get(`lock:mute:${remoteJid}`);
+        const yaEstaCerrando = floodCounters.get(`lock:mute:${remoteJid}`);
         
         if (!yaEstaCerrando) {
           const llaveFloodGlobal = `flood:${remoteJid}`;
-          const totalMensajesGrupo = await redisClient.incr(llaveFloodGlobal);
+          let totalMensajesGrupo = floodCounters.get(llaveFloodGlobal) || 0;
+          totalMensajesGrupo += 1;
+          floodCounters.set(llaveFloodGlobal, totalMensajesGrupo);
           
           if (totalMensajesGrupo === 1) {
-            await redisClient.expire(llaveFloodGlobal, config.antispam?.seconds || 4);
+            setTimeout(() => {
+              floodCounters.delete(llaveFloodGlobal);
+            }, (config.antispam?.seconds || 4) * 1000);
           }
 
           const limiteConfigurado = config.antispam?.limit || 6;
           if (totalMensajesGrupo > limiteConfigurado && config.antispam?.enabled) {
-            await redisClient.setEx(`lock:mute:${remoteJid}`, 35, 'true');
+            floodCounters.set(`lock:mute:${remoteJid}`, 'true');
             
             try {
               await sock.groupSettingUpdate(remoteJid, 'announcement');
@@ -416,15 +420,16 @@ async function startBot() {
                     text: `✅ *CHAT REABIERTO*\n\nEl grupo ha sido abierto nuevamente. Por favor, mantengan el orden o el sistema volverá a actuar.`
                   });
                   
-                  await redisClient.del(llaveFloodGlobal);
+                  floodCounters.delete(llaveFloodGlobal);
                 } catch (err) {
                   console.error('Error al reabrir el grupo automáticamente:', err);
                 }
+                floodCounters.delete(`lock:mute:${remoteJid}`);
               }, 30000);
 
             } catch (err) {
               console.error('Error en el proceso de muteo por flood:', err);
-              await redisClient.del(`lock:mute:${remoteJid}`);
+              floodCounters.delete(`lock:mute:${remoteJid}`);
             }
           }
         }
