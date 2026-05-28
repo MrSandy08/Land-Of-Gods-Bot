@@ -39,23 +39,26 @@ const handleCommand = async (sock, m, command, args, currentUser, config, groupI
         comandoEjecutar = 'tienda aprobar';
         argsRestantes = args.slice(1);
     } 
-    // Verificar "mitienda" subcomandos
+    // Verificar "mitienda" subcomandos (abrir, cerrar, diseño, set-banner, añadir, diseñar)
     else if (command === 'mitienda') {
         const subcomando = args[0];
         const comandoCompleto = `mitienda ${subcomando}`;
         if (allCommands[comandoCompleto]) {
             comandoEjecutar = comandoCompleto;
             argsRestantes = args.slice(1);
+        } else {
+            // Si no hay subcomando reconocido, ejecutar el comando base "mitienda"
+            comandoEjecutar = 'mitienda';
         }
     }
 
-    // Si encontramos un comando multi-palabra, ejecutarlo
+    // Si encontramos un comando multi-palabra o base, ejecutarlo
     if (comandoEjecutar && allCommands[comandoEjecutar]) {
         await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, config, reply, sender, groupId, userGroup);
         return;
     }
 
-    // Si no, ejecutar comando simple
+    // Si no, ejecutar comando simple (incluye "tienda" para ver la tienda de alguien)
     if (allCommands[command]) {
         await allCommands[command](sock, m, args, currentUser, config, reply, sender, groupId, userGroup);
     }

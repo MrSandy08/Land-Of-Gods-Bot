@@ -15,6 +15,32 @@ const fmt = require('../../format');
 const modoDiseñoTienda = new Map(); // { userId: true }
 const transaccionesPendientes = new Map(); // { messageId: { compradorId, vendedorId, monto, producto } }
 
+// Función auxiliar para subir búfers de imágenes directamente a ImgBB
+async function subirAImgBB(bufferImagen) {
+  try {
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('image', bufferImagen.toString('base64'));
+
+    const apiKey = process.env.IMGBB_KEY;
+    if (!apiKey) {
+      console.error('❌ Falta IMGBB_KEY en el archivo .env');
+      return '';
+    }
+
+    const response = await axios.post(
+      `https://api.imgbb.com/1/upload?key=${apiKey}`,
+      form,
+      { headers: form.getHeaders() }
+    );
+
+    return response.data?.data?.url || '';
+  } catch (error) {
+    console.error('❌ Error al subir imagen a ImgBB:', error.message);
+    return '';
+  }
+}
+
 module.exports = {
   // --- COMANDOS ADMINISTRATIVOS ---
   pagar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
@@ -363,6 +389,132 @@ module.exports = {
     } catch (err) {
       console.error('Error en !comprar:', err);
       reply(fmt.aviso('Error al procesar.'));
+    }
+  },
+
+  // --- NUEVOS COMANDOS DE TIENDA ---
+  mitienda: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    try {
+      const subcomando = args[0]?.toLowerCase();
+
+      // Subcomando: !mitienda diseñar [texto] (Soporta imagen adjunta)
+      if (subcomando === 'diseñar') {
+        const diseño = args.slice(1).join(' ');
+        
+        // Verificar si hay una imagen en el mensaje actual o en el citado
+        const tieneImagen = m.message?.imageMessage || 
+                            (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
+
+        if (!diseño && !tieneImagen) {
+          return reply(fmt.aviso('Uso: !mitienda diseñar [texto estético] (Puedes adjuntar una imagen o responder a una)'));
+        }
+
+        let tienda = await Tienda.findOne({ ownerId: sender });
+        if (!tienda) tienda = new Tienda({ ownerId: sender });
+
+        // Si el usuario adjuntó o citó una imagen, la descargamos y subimos a ImgBB
+        if (tieneImagen) {
+          await sock.sendMessage(groupId, { text: '⏳ _Procesando y subiendo la imagen de tu comercio a la nube..._' }, { quoted: m });
+          try {
+            // Descargar usando la función nativa de Baileys
+            let mediaMessage;
+            if (m.message?.imageMessage) {
+              mediaMessage = m;
+            } else {
+              mediaMessage = { message: m.message.extendedTextMessage.contextInfo.quotedMessage };
+            }
+            
+            const buffer = await downloadMediaMessage(
+              mediaMessage,
+              'buffer',
+              {},
+              { logger: console }
+            );
+
+            const urlSubida = await subirAImgBB(buffer);
+            if (urlSubida) {
+              tienda.bannerUrl = urlSubida;
+            } else {
+              return reply(fmt.aviso('No se pudo procesar la imagen adjunta. Inténtalo de nuevo.'));
+            }
+          } catch (errImg) {
+            console.error('Error descargando multimedia:', errImg);
+            return reply(fmt.aviso('Error crítico al procesar el archivo multimedia de Baileys.'));
+          }
+        }
+
+        // Si envió texto, actualizamos el diseño libre
+        if (diseño) {
+          tienda.diseñoLibre = diseño;
+        }
+
+        await tienda.save();
+        return reply('✅ ¡Los datos visuales de tu tienda han sido actualizados! Usa `!mitienda` para ver el resultado.');
+      }
+
+      // Visualización base de !mitienda
+      let tienda = await Tienda.findOne({ ownerId: sender });
+      if (!tienda) {
+        tienda = new Tienda({
+          ownerId: sender,
+          diseñoLibre: '🏪 *Nueva Tienda del Olimpo*\n\nUsa `!mitienda diseñar [Productos]` para darle estética.'
+        });
+        await tienda.save();
+      }
+
+      const avisoAprobada = tienda.aprobada
+        ? '🟢 *Estado:* Abierta al público'
+        : '🟡 *Estado:* Pendiente de aprobación (Usa `!tienda aprobar` siendo Admin)';
+
+      const textoFinal = `${tienda.diseñoLibre}\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n⚠️ _${avisoAprobada}_`;
+
+      // Si tiene imagen guardada, se manda la imagen con el diseño de texto de caption
+      if (tienda.bannerUrl) {
+        await sock.sendMessage(groupId, {
+          image: { url: tienda.bannerUrl },
+          caption: textoFinal,
+          mentions: [sender]
+        }, { quoted: m });
+      } else {
+        await sock.sendMessage(groupId, { text: textoFinal, mentions: [sender] }, { quoted: m });
+      }
+
+    } catch (err) {
+      console.error('Error en !mitienda:', err);
+      reply(fmt.aviso('Error al cargar la gestión de tu tienda.'));
+    }
+  },
+
+  tienda: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    try {
+      if (args[0] === 'aprobar') return; // Evitar interferencias con subcomandos
+
+      const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+      if (!mentionedJid) return reply(fmt.aviso('Uso: !tienda @usuario'));
+
+      const tienda = await Tienda.findOne({ ownerId: mentionedJid });
+      if (!tienda || !tienda.aprobada) {
+        return reply(fmt.aviso('Este usuario no tiene una tienda registrada o activa en el reino.'));
+      }
+
+      const jidClean = mentionedJid.split('@')[0];
+      
+      // Se muestra únicamente el diseño que le puso el propietario
+      const textoAMostrar = `${tienda.diseñoLibre}\n\n🛒 _Para comprar usa: !comprar @${jidClean} [Producto]_`;
+
+      // Si tiene imagen, se envía el archivo multimedia directamente
+      if (tienda.bannerUrl) {
+        await sock.sendMessage(groupId, {
+          image: { url: tienda.bannerUrl },
+          caption: textoAMostrar,
+          mentions: [mentionedJid]
+        }, { quoted: m });
+      } else {
+        await sock.sendMessage(groupId, { text: textoAMostrar, mentions: [mentionedJid] }, { quoted: m });
+      }
+    } catch (err) {
+      console.error('Error en !tienda:', err);
+      reply(fmt.aviso('Error al obtener la tienda del usuario.'));
     }
   },
 
