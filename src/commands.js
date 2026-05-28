@@ -15,45 +15,7 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
         return;
     }
 
-    // --- CONFIGURACIÓN DE RESPUESTAS SILENCIOSAS ---
-    // Comandos informativos extensos que SÍ deben enviar texto a la fuerza
-    const comandosConTexto = [
-        'menu', 'top', 'low', 'inactivos', 'advertencias',
-        'personajes', 'pedidos', 'sinpersonaje', 'sugerencias',
-        'mitienda', 'tienda', 'saldo'
-    ];
-
-    let reply;
-    if (comandosConTexto.includes(command)) {
-        // Mantiene el envío de menús, tops o visualización de tiendas de forma normal
-        reply = async (text) => await sock.sendMessage(remoteJid, { text, mentions: [sender] }, { quoted: m });
-    } else {
-        // Reescribe el reply para comandos de acción (asignar, pagar, comprar, adv, etc.)
-        reply = async (text) => {
-            // Si el texto de respuesta contiene palabras de error, alerta o uso incorrecto, pone una equis
-            const esError = text.toLowerCase().includes('error') ||
-                            text.toLowerCase().includes('inválido') ||
-                            text.toLowerCase().includes('uso:') ||
-                            text.toLowerCase().includes('solo admins') ||
-                            text.toLowerCase().includes('insuficiente') ||
-                            text.toLowerCase().includes('no se encontró');
-
-            const emoji = esError ? '❌' : '✅';
-            
-            try {
-                await sock.sendMessage(remoteJid, {
-                    react: { text: emoji, key: m.key }
-                });
-            } catch (err) {
-                console.error('Error al enviar reacción silenciosa:', err);
-            }
-        };
-    }
-    // ------------------------------------------------
-
-    const userGroup = await UserGroup.getOrCreate(sender);
-
-    // Unir comandos de economía con el resto
+    // 1. Unir todos los comandos disponibles en un solo mapa
     const allCommands = {
         ...menuCommands,
         ...characterCommands,
@@ -64,24 +26,14 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
         ...economyCommands
     };
 
-    // Determinar qué config usar para este comando
-    const comandosQueUsanGroupConfig = ['economy', 'mitienda', 'tienda', 'tienda aprobar', 'mitienda añadir', 'comprar'];
-    const usarGroupConfig = comandosQueUsanGroupConfig.includes(command) || 
-                            (command === 'tienda' && args[0] === 'aprobar') || 
-                            (command === 'mitienda');
-
-    const configParaComando = usarGroupConfig ? groupConfig : globalConfig;
-
-    // Manejar comandos multi-palabra (ej: "mitienda abrir", "tienda aprobar")
+    // 2. Resolver comandos multi-palabra antes de definir el reply
     let comandoEjecutar = null;
     let argsRestantes = args;
     
-    // Verificar "tienda aprobar"
     if (command === 'tienda' && args[0] === 'aprobar') {
         comandoEjecutar = 'tienda aprobar';
         argsRestantes = args.slice(1);
-    } 
-    // Verificar "mitienda" subcomandos (abrir, cerrar, diseño, set-banner, añadir, diseñar)
+    }
     else if (command === 'mitienda') {
         const subcomando = args[0];
         const comandoCompleto = `mitienda ${subcomando}`;
@@ -91,26 +43,63 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
         } else {
             comandoEjecutar = 'mitienda';
         }
+    } else {
+        comandoEjecutar = command;
     }
 
-    // Si encontramos un comando multi-palabra o base, ejecutarlo
-    if (comandoEjecutar && allCommands[comandoEjecutar]) {
-        // Aplicar también el comportamiento silencioso si es un subcomando de acción (como añadir o aprobar)
-        if (!comandosConTexto.includes(comandoEjecutar) && comandoEjecutar !== 'mitienda') {
-            const originalReply = reply;
-            reply = async (text) => {
-                const esError = text.toLowerCase().includes('error') || text.toLowerCase().includes('inválido');
-                await sock.sendMessage(remoteJid, { react: { text: esError ? '❌' : '✅', key: m.key } });
-            };
-        }
-        const cmdConfig = comandosQueUsanGroupConfig.includes(comandoEjecutar) ? groupConfig : globalConfig;
-        await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, cmdConfig, reply, sender, groupId, userGroup);
+    // Si el comando no existe en nuestro bot, ignoramos el mensaje por completo y salimos
+    if (!allCommands[comandoEjecutar]) {
         return;
     }
 
-    // Si no, ejecutar comando simple
-    if (allCommands[command]) {
-        await allCommands[command](sock, m, args, currentUser, configParaComando, reply, sender, groupId, userGroup);
+    // 3. Seleccionar la configuración correcta para el comando
+    const comandosQueUsanGroupConfig = ['economy', 'mitienda', 'tienda', 'tienda aprobar', 'mitienda añadir', 'comprar'];
+    const configParaComando = comandosQueUsanGroupConfig.includes(comandoEjecutar) ? groupConfig : globalConfig;
+
+    // 4. Definición inteligente de la función REPLY
+    // Lista de comandos que obligatoriamente deben enviar texto/imágenes al chat
+    const comandosConTexto = [
+        'menu', 'top', 'low', 'inactivos', 'advertencias',
+        'personajes', 'pedidos', 'sinpersonaje', 'sugerencias',
+        'mitienda', 'tienda', 'saldo'
+    ];
+
+    let reply;
+    if (comandosConTexto.includes(comandoEjecutar)) {
+        // Envia el texto normalizado al chat
+        reply = async (text) => {
+            return await sock.sendMessage(remoteJid, { text, mentions: [sender] }, { quoted: m });
+        };
+    } else {
+        // Modo silencioso: intercepta el texto y lo convierte en reacción ✅ o ❌
+        reply = async (text) => {
+            const txt = text.toLowerCase();
+            const esError = txt.includes('error') ||
+                            txt.includes('inválido') ||
+                            txt.includes('uso:') ||
+                            txt.includes('solo admins') ||
+                            txt.includes('insuficiente') ||
+                            txt.includes('no se encontró') ||
+                            txt.includes('no está activo');
+
+            const emoji = esError ? '❌' : '✅';
+            try {
+                return await sock.sendMessage(remoteJid, { react: { text: emoji, key: m.key } });
+            } catch (err) {
+                console.error('Error al reaccionar:', err);
+            }
+        };
+    }
+
+    // 5. Ejecución segura del comando
+    try {
+        const userGroup = await UserGroup.getOrCreate(sender);
+        await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, configParaComando, reply, sender, groupId, userGroup);
+    } catch (criticalErr) {
+        console.error(`Error crítico ejecutando !${comandoEjecutar}:`, criticalErr);
+        try {
+            await sock.sendMessage(remoteJid, { react: { text: '❌', key: m.key } });
+        } catch (_) {}
     }
 };
 
