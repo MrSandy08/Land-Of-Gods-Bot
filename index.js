@@ -391,11 +391,11 @@ async function startBot() {
           if (totalMensajesGrupo === 1) {
             setTimeout(() => {
               floodCounters.delete(llaveFloodGlobal);
-            }, (config.antispam?.seconds || 4) * 1000);
+            }, (globalConfig.antispam?.seconds || 4) * 1000);
           }
 
-          const limiteConfigurado = config.antispam?.limit || 6;
-          if (totalMensajesGrupo > limiteConfigurado && config.antispam?.enabled) {
+          const limiteConfigurado = globalConfig.antispam?.limit || 6;
+          if (totalMensajesGrupo > limiteConfigurado && globalConfig.antispam?.enabled) {
             floodCounters.set(`lock:mute:${remoteJid}`, 'true');
             
             try {
