@@ -5,7 +5,7 @@ const TiendaSchema = new mongoose.Schema({
   abierta: { type: Boolean, default: false },
   aprobada: { type: Boolean, default: false },
   diseñoLibre: { type: String, default: '' },
-  bannerUrl: { type: String, default: null }
-});
+  imagenUrl: { type: String, default: '' }
+}, { timestamps: true });
 
 module.exports = mongoose.model('Tienda', TiendaSchema);

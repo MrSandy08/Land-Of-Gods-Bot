@@ -242,7 +242,7 @@ module.exports = {
         let tienda = await Tienda.findOne({ ownerId: sender });
         if (!tienda) tienda = new Tienda({ ownerId: sender });
         
-        tienda.bannerUrl = response.data.data.url;
+        tienda.imagenUrl = response.data.data.url;
         await tienda.save();
         
         reply(fmt.aviso('Banner guardado!'));
@@ -321,10 +321,10 @@ module.exports = {
 
       const contenidoTienda = tienda.diseñoLibre || 'Tienda sin diseño.';
 
-      if (tienda.bannerUrl) {
+      if (tienda.imagenUrl) {
         // Enviar imagen con caption y menciones
         await sock.sendMessage(m.key.remoteJid, {
-          image: { url: tienda.bannerUrl },
+          image: { url: tienda.imagenUrl },
           caption: contenidoTienda,
           mentions: [mentionedJid]
         }, { quoted: m });
@@ -433,7 +433,7 @@ module.exports = {
 
             const urlSubida = await subirAImgBB(buffer);
             if (urlSubida) {
-              tienda.bannerUrl = urlSubida;
+              tienda.imagenUrl = urlSubida;
             } else {
               return reply(fmt.aviso('No se pudo procesar la imagen adjunta. Inténtalo de nuevo.'));
             }
@@ -469,9 +469,9 @@ module.exports = {
       const textoFinal = `${tienda.diseñoLibre}\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n⚠️ _${avisoAprobada}_`;
 
       // Si tiene imagen guardada, se manda la imagen con el diseño de texto de caption
-      if (tienda.bannerUrl) {
+      if (tienda.imagenUrl) {
         await sock.sendMessage(groupId, {
-          image: { url: tienda.bannerUrl },
+          image: { url: tienda.imagenUrl },
           caption: textoFinal,
           mentions: [sender]
         }, { quoted: m });
@@ -503,9 +503,9 @@ module.exports = {
       const textoAMostrar = `${tienda.diseñoLibre}\n\n🛒 _Para comprar usa: !comprar @${jidClean} [Producto]_`;
 
       // Si tiene imagen, se envía el archivo multimedia directamente
-      if (tienda.bannerUrl) {
+      if (tienda.imagenUrl) {
         await sock.sendMessage(groupId, {
-          image: { url: tienda.bannerUrl },
+          image: { url: tienda.imagenUrl },
           caption: textoAMostrar,
           mentions: [mentionedJid]
         }, { quoted: m });
