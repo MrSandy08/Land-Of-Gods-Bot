@@ -53,7 +53,7 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
     }
 
     // 3. Seleccionar la configuración correcta para el comando
-    const comandosQueUsanGroupConfig = ['economy', 'mitienda', 'tienda', 'tienda aprobar', 'mitienda añadir', 'comprar'];
+    const comandosQueUsanGroupConfig = ['economy', 'mitienda', 'tienda', 'tienda aprobar', 'mitienda añadir', 'mitienda diseñar', 'comprar'];
     const configParaComando = comandosQueUsanGroupConfig.includes(comandoEjecutar) ? groupConfig : globalConfig;
 
     // 4. Definición inteligente de la función REPLY
