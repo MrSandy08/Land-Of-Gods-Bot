@@ -47,6 +47,32 @@ function limpiarTexto(texto) {
 
 module.exports = {
   // --- COMANDOS ADMINISTRATIVOS ---
+
+  economy: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    try {
+      if (!(await isAdmin(m, sock))) return;
+
+      const estado = args[0]?.toLowerCase();
+      if (!estado || !['on', 'off'].includes(estado)) return;
+
+      config.economy = (estado === 'on');
+      if (typeof config.save === 'function') {
+        await config.save();
+      }
+
+      await sock.sendMessage(groupId, {
+        react: {
+          text: '✅',
+          key: m.key
+        }
+      });
+    } catch (err) {
+      console.error('Error en !economy:', err);
+      try {
+        await sock.sendMessage(groupId, { react: { text: '❌', key: m.key } });
+      } catch (_) {}
+    }
+  },
   
   pagar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {

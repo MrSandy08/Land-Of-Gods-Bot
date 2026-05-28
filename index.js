@@ -367,8 +367,16 @@ async function startBot() {
         await userGroup.save();
       }
       
-      // 2. Control Anti-spam y Flood
+      // 2. Control Anti-spam y Flood + Group Config
       const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
+      let groupConfig = null;
+      if (isGroup) {
+        groupConfig = await Group.findById(remoteJid);
+        if (!groupConfig) {
+          groupConfig = new Group({ _id: remoteJid });
+          await groupConfig.save();
+        }
+      }
       
       // Control de Flood (cierre automático de grupo) - En memoria local
       if (isGroup) {
