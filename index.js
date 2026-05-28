@@ -515,12 +515,13 @@ async function startBot() {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
         
-        console.log(`[COMANDO] Ejecutando: ${prefix}${command} enviado por ${sender}`);
+        console.log(`[COMANDO] Recibido: ${prefix}${command} de ${sender} en grupo ${remoteJid}`);
         
         try {
+          // EN ORDEN: sock, m, command, args, user, config, remoteJid (groupId), sender
           await handleCommand(sock, m, command, args, user, config, remoteJid, sender);
         } catch (cmdErr) {
-          console.error(`❌ Error interno al ejecutar el comando ${command}:`, cmdErr);
+          console.error(`❌ Error crítico ejecutando el comando !${command}:`, cmdErr);
         }
       } else {
         await user.save();
@@ -531,6 +532,15 @@ async function startBot() {
     }
   });
 }
+
+// Escudo protector contra crashes inesperados (Evita el desplome por SIGTERM en Render)
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Se detectó una excepción no controlada en el Bot:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Se detectó una promesa rechazada no manejada:', reason);
+});
 
 // Arrancar el Bot
 startBot();
