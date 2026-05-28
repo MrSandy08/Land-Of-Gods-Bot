@@ -35,6 +35,25 @@ async function subirAImgBB(bufferImagen) {
   }
 }
 
+// Función auxiliar para subir GIFs o Videos a Catbox (Soporta MP4/GIF sin necesidad de API Key)
+async function subirACatbox(bufferMedia, extension = 'mp4') {
+  try {
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('reqtype', 'fileupload');
+    form.append('fileToUpload', bufferMedia, { filename: `media.${extension}` });
+
+    const response = await axios.post('https://catbox.moe/user/api.php', form, {
+      headers: form.getHeaders(),
+    });
+
+    return response.data?.trim() || '';
+  } catch (error) {
+    console.error('❌ Error al subir multimedia a Catbox:', error.message);
+    return '';
+  }
+}
+
 function limpiarTexto(texto) {
   return texto
     .toLowerCase()
@@ -182,85 +201,135 @@ module.exports = {
       }
 
       if (subcomando === 'diseñar') {
-        // 1. Capturar todo el texto de origen para preservar saltos de línea (\n) perfectamente
-        const textoOriginal = m.message?.conversation ||
-                              m.message?.extendedTextMessage?.text ||
-                              m.message?.imageMessage?.caption ||
-                              m.message?.viewOnceMessage?.message?.imageMessage?.caption ||
-                              m.message?.ephemeralMessage?.message?.imageMessage?.caption ||
-                              "";
+        // 1. Extraer el texto del mensaje actual de forma estricta (funciona en texto directo o reply)
+        const textoMensajeActual = m.message?.conversation ||
+                                   m.message?.extendedTextMessage?.text ||
+                                   m.message?.imageMessage?.caption ||
+                                   m.message?.videoMessage?.caption ||
+                                   "";
 
-        const lowerText = textoOriginal.toLowerCase();
+        const lowerText = textoMensajeActual.toLowerCase();
         const indexDisenar = lowerText.indexOf('diseñar');
         let diseño = '';
         
-        // Cortar el texto justo después de la palabra "diseñar"
         if (indexDisenar !== -1) {
-          diseño = textoOriginal.substring(indexDisenar + 'diseñar'.length).trim();
+          diseño = textoMensajeActual.substring(indexDisenar + 'diseñar'.length).trim();
         }
 
-        // 2. Detección profunda de imágenes (Directas, Ver una vez, Efímeras o Citadas)
+        // 2. Mapeo profundo de Multimedia: Imágenes y Videos/GIFs (Directos y Citados)
         const imgMessage = m.message?.imageMessage ||
                            m.message?.viewOnceMessage?.message?.imageMessage ||
                            m.message?.ephemeralMessage?.message?.imageMessage;
 
-        const contextInfo = m.message?.extendedTextMessage?.contextInfo ||
-                            m.message?.imageMessage?.contextInfo ||
-                            m.message?.viewOnceMessage?.message?.imageMessage?.contextInfo;
+        const videoMessage = m.message?.videoMessage ||
+                             m.message?.viewOnceMessage?.message?.videoMessage ||
+                             m.message?.ephemeralMessage?.message?.videoMessage;
 
+        const contextInfo = m.message?.extendedTextMessage?.contextInfo;
         const quotedMessage = contextInfo?.quotedMessage;
+
         const quotedImgMessage = quotedMessage?.imageMessage ||
                                  quotedMessage?.viewOnceMessage?.message?.imageMessage ||
                                  quotedMessage?.ephemeralMessage?.message?.imageMessage;
 
-        const tieneImagen = imgMessage || quotedImgMessage;
+        const quotedVideoMessage = quotedMessage?.videoMessage ||
+                                   quotedMessage?.viewOnceMessage?.message?.videoMessage ||
+                                   quotedMessage?.ephemeralMessage?.message?.videoMessage;
 
-        if (!diseño && !tieneImagen) {
-          return reply(fmt.aviso('Uso: !mitienda diseñar [Productos/Descripción] (Puedes adjuntar o responder a una foto)'));
+        const tieneImagen = imgMessage || quotedImgMessage;
+        const tieneVideo = videoMessage || quotedVideoMessage;
+        const tieneMedia = tieneImagen || tieneVideo;
+        const esVideo = videoMessage || quotedVideoMessage;
+
+        // Fallback: Si el usuario no escribió texto en su comando, usar el texto del mensaje citado si existe
+        if (!diseño && quotedMessage) {
+          diseño = quotedMessage.conversation ||
+                   quotedMessage.extendedTextMessage?.text ||
+                   quotedMessage.imageMessage?.caption ||
+                   quotedMessage.videoMessage?.caption ||
+                   "";
+        }
+
+        if (!diseño && !tieneMedia) {
+          return reply(fmt.aviso('Uso: !mitienda diseñar [Texto] (Puedes adjuntar o responder a una foto o un GIF)'));
         }
 
         let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
         if (!tienda) tienda = new Tienda({ ownerId: sender, groupId: groupId });
 
-        // 3. Procesamiento seguro del archivo multimedia
-        if (tieneImagen) {
-          await sock.sendMessage(groupId, { text: '⏳ _Procesando y subiendo imagen..._' }, { quoted: m });
+        // 3. Procesamiento y subida del archivo multimedia detectado
+        if (tieneMedia) {
+          await sock.sendMessage(groupId, { text: '⏳ _Procesando y subiendo archivo multimedia de la tienda..._' }, { quoted: m });
           try {
-            let mediaMessage = imgMessage ? m : { message: quotedMessage };
+            let mediaMessage = (imgMessage || videoMessage) ? m : { message: quotedMessage };
             const buffer = await downloadMediaMessage(mediaMessage, 'buffer', {}, { logger: console });
 
             if (buffer) {
-              const urlSubida = await subirAImgBB(buffer);
-              if (urlSubida) tienda.imagenUrl = urlSubida;
+              let urlSubida = '';
+              if (esVideo) {
+                // Si es un GIF/Video se sube obligatoriamente a Catbox
+                urlSubida = await subirACatbox(buffer, 'mp4');
+              } else {
+                // Si es imagen estándar, intenta ImgBB primero si tienes la KEY configurada
+                if (process.env.IMGBB_KEY) {
+                  urlSubida = await subirAImgBB(buffer);
+                }
+                // Si falla o no usas ImgBB, Catbox actúa como respaldo automático
+                if (!urlSubida) {
+                  urlSubida = await subirACatbox(buffer, 'jpg');
+                }
+              }
+
+              if (urlSubida) {
+                tienda.imagenUrl = urlSubida;
+              } else {
+                return reply(fmt.aviso('Error al alojar el archivo multimedia en el servidor.'));
+              }
             }
           } catch (errImg) {
-            console.error('Error descargando imagen:', errImg);
-            return reply(fmt.aviso('Error al procesar el archivo de imagen.'));
+            console.error('Error descargando archivo multimedia:', errImg);
+            return reply(fmt.aviso('No se pudo procesar el archivo multimedia seleccionado.'));
           }
         }
 
-        // 4. Guardar el diseño de texto si fue provisto
+        // 4. Guardar los cambios de texto del menú
         if (diseño) {
           tienda.diseñoLibre = diseño;
         }
         
         await tienda.save();
-        return reply('✅');
+        return reply('✅ ¡Diseño de tienda actualizado correctamente!');
       }
 
-      // --- MOSTRAR TIENDA (Si solo se ejecuta !mitienda) ---
+      // --- RENDERIZADO Y DESPLIEGUE DE LA TIENDA ---
       let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
       if (!tienda) {
         tienda = new Tienda({
           ownerId: sender,
           groupId: groupId,
-          diseñoLibre: '🏪 *Nueva Tienda del Olimpo*\n\nUsa `!mitienda diseñar [Productos]` para darle estética.'
+          diseñoLibre: '🏪 *Nueva Tienda*\n\nUsa `!mitienda diseñar [Productos]` para darle estética.'
         });
         await tienda.save();
       }
 
       if (tienda.imagenUrl) {
-        await sock.sendMessage(groupId, { image: { url: tienda.imagenUrl }, caption: tienda.diseñoLibre, mentions: [sender] }, { quoted: m });
+        // Detectar si la URL guardada pertenece a un video/gif para enviarla de forma correcta
+        const esVideoUrl = tienda.imagenUrl.endsWith('.mp4') || tienda.imagenUrl.includes('catbox.moe');
+
+        if (esVideoUrl) {
+          await sock.sendMessage(groupId, {
+            video: { url: tienda.imagenUrl },
+            gifPlayback: true,
+            caption: tienda.diseñoLibre,
+            mentions: [sender]
+          }, { quoted: m });
+        } else {
+          await sock.sendMessage(groupId, {
+            image: { url: tienda.imagenUrl },
+            caption: tienda.diseñoLibre,
+            mentions: [sender]
+          }, { quoted: m });
+        }
       } else {
         await sock.sendMessage(groupId, { text: tienda.diseñoLibre, mentions: [sender] }, { quoted: m });
       }
