@@ -8,7 +8,7 @@ const economyCommands = require('./commands/economyCommands');
 
 const UserGroup = require('./models/UserGroup');
 
-const handleCommand = async (sock, m, command, args, currentUser, config, groupId, sender) => {
+const handleCommand = async (sock, m, command, args, currentUser, globalConfig, groupConfig, groupId, sender) => {
     const remoteJid = m.key.remoteJid;
 
     if (!remoteJid.endsWith('@g.us')) {
@@ -64,6 +64,14 @@ const handleCommand = async (sock, m, command, args, currentUser, config, groupI
         ...economyCommands
     };
 
+    // Determinar qué config usar para este comando
+    const comandosQueUsanGroupConfig = ['economy', 'mitienda', 'tienda', 'tienda aprobar', 'mitienda añadir', 'comprar'];
+    const usarGroupConfig = comandosQueUsanGroupConfig.includes(command) || 
+                            (command === 'tienda' && args[0] === 'aprobar') || 
+                            (command === 'mitienda');
+
+    const configParaComando = usarGroupConfig ? groupConfig : globalConfig;
+
     // Manejar comandos multi-palabra (ej: "mitienda abrir", "tienda aprobar")
     let comandoEjecutar = null;
     let argsRestantes = args;
@@ -95,13 +103,14 @@ const handleCommand = async (sock, m, command, args, currentUser, config, groupI
                 await sock.sendMessage(remoteJid, { react: { text: esError ? '❌' : '✅', key: m.key } });
             };
         }
-        await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, config, reply, sender, groupId, userGroup);
+        const cmdConfig = comandosQueUsanGroupConfig.includes(comandoEjecutar) ? groupConfig : globalConfig;
+        await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, cmdConfig, reply, sender, groupId, userGroup);
         return;
     }
 
     // Si no, ejecutar comando simple
     if (allCommands[command]) {
-        await allCommands[command](sock, m, args, currentUser, config, reply, sender, groupId, userGroup);
+        await allCommands[command](sock, m, args, currentUser, configParaComando, reply, sender, groupId, userGroup);
     }
 };
 

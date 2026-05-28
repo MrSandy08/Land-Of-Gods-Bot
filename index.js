@@ -368,7 +368,7 @@ async function startBot() {
       }
       
       // 2. Control Anti-spam y Flood + Group Config
-      const config = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
+      const globalConfig = await Config.findOne({ _id: 'global' }) || await Config.create({ _id: 'global' });
       let groupConfig = null;
       if (isGroup) {
         groupConfig = await Group.findById(remoteJid);
@@ -443,7 +443,7 @@ async function startBot() {
         }
       }
 
-      const isSpamming = handleAntispam(m, config, remoteJid);
+      const isSpamming = handleAntispam(m, globalConfig, remoteJid);
       if (isSpamming) {
         return;
       }
@@ -531,8 +531,8 @@ async function startBot() {
         console.log(`[COMANDO] Recibido: ${prefix}${command} de ${sender} en grupo ${remoteJid}`);
         
         try {
-          // EN ORDEN: sock, m, command, args, user, config, remoteJid (groupId), sender
-          await handleCommand(sock, m, command, args, user, config, remoteJid, sender);
+          // EN ORDEN: sock, m, command, args, user, globalConfig, groupConfig, remoteJid (groupId), sender
+          await handleCommand(sock, m, command, args, user, globalConfig, groupConfig, remoteJid, sender);
         } catch (cmdErr) {
           console.error(`❌ Error crítico ejecutando el comando !${command}:`, cmdErr);
         }

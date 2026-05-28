@@ -3,6 +3,7 @@ require('dotenv').config({ path: require('path').join(process.cwd(), '.env') });
 
 const User = require('../models/User');
 const Tienda = require('../models/Tienda');
+const Group = require('../models/Group');
 const { isAdmin } = require('../utils');
 const axios = require('axios');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
@@ -56,9 +57,13 @@ module.exports = {
       if (!estado || !['on', 'off'].includes(estado)) return;
 
       config.economy = (estado === 'on');
-      if (typeof config.save === 'function') {
-        await config.save();
-      }
+      
+      // Force save to Group model
+      await Group.findByIdAndUpdate(
+        groupId,
+        { economy: (estado === 'on') },
+        { upsert: true, new: true }
+      );
 
       await sock.sendMessage(groupId, {
         react: {
