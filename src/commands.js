@@ -47,17 +47,15 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
         comandoEjecutar = command;
     }
 
-    // Si el comando no existe en nuestro bot, ignoramos el mensaje por completo y salimos
+    // Si el comando no existe, salimos de inmediato
     if (!allCommands[comandoEjecutar]) {
         return;
     }
 
-    // 3. Seleccionar la configuración correcta para el comando
-    const comandosQueUsanGroupConfig = ['economy', 'mitienda', 'tienda', 'tienda aprobar', 'mitienda añadir', 'mitienda diseñar', 'comprar'];
-    const configParaComando = comandosQueUsanGroupConfig.includes(comandoEjecutar) ? groupConfig : globalConfig;
+    // Usamos groupConfig si existe, de lo contrario globalConfig
+    const configParaComando = groupConfig || globalConfig || {};
 
-    // 4. Definición inteligente de la función REPLY
-    // Lista de comandos que obligatoriamente deben enviar texto/imágenes al chat
+    // 3. Definición inteligente de la función REPLY
     const comandosConTexto = [
         'menu', 'top', 'low', 'inactivos', 'advertencias',
         'personajes', 'pedidos', 'sinpersonaje', 'sugerencias',
@@ -66,7 +64,6 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
 
     let reply;
     if (comandosConTexto.includes(comandoEjecutar)) {
-        // Envia el texto normalizado al chat
         reply = async (text) => {
             return await sock.sendMessage(remoteJid, { text, mentions: [sender] }, { quoted: m });
         };
