@@ -438,8 +438,8 @@ async function startBot() {
       // --- LISTENERS ESPECIALES (Economía y Tiendas) ---
       const Tienda = require('./src/models/Tienda');
       
-      // 1. Usuario en modo "diseño de tienda"
-      if (handleCommand.modoDiseñoTienda && handleCommand.modoDiseñoTienda.has(sender)) {
+      // 1. Usuario en modo "diseño de tienda" (Corregido con validación de existencia)
+      if (handleCommand && handleCommand.modoDiseñoTienda && handleCommand.modoDiseñoTienda.has(sender)) {
         try {
           let tienda = await Tienda.findOne({ ownerId: sender });
           if (!tienda) tienda = new Tienda({ ownerId: sender });
@@ -455,27 +455,24 @@ async function startBot() {
         }
       }
 
-      // 2. Comandos !aceptar o !rechazar en respuesta a transacción pendiente
+      // 2. Comandos !aceptar o !rechazar en respuesta a transacción pendiente (Corregido con validación de existencia)
       if (isCommand) {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
         
         if (command === 'aceptar' || command === 'rechazar') {
-          // Verificar que el mensaje responda a un mensaje del bot (Baileys quoted message)
           const quotedMessage = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
           const quotedParticipant = m.message?.extendedTextMessage?.contextInfo?.participant;
           
           if (quotedParticipant && quotedParticipant.endsWith('@s.whatsapp.net')) {
-            // Obtener el ID del mensaje citado
             const quotedMessageId = m.message?.extendedTextMessage?.contextInfo?.stanzaId;
             
-            if (handleCommand.transaccionesPendientes && handleCommand.transaccionesPendientes.has(quotedMessageId)) {
+            // CORRECCIÓN AQUÍ: Validamos que transaccionesPendientes exista antes de usar .has()
+            if (handleCommand && handleCommand.transaccionesPendientes && handleCommand.transaccionesPendientes.has(quotedMessageId)) {
               const transaccion = handleCommand.transaccionesPendientes.get(quotedMessageId);
               
-              // Verificar que quien responde sea el vendedor
               if (sender === transaccion.vendedorId) {
                 if (command === 'aceptar') {
-                  // Realizar la transacción
                   let comprador = await User.findById(transaccion.compradorId);
                   if (!comprador) comprador = new User({ _id: transaccion.compradorId });
                   
@@ -505,7 +502,6 @@ async function startBot() {
                   }, { quoted: m });
                 }
                 
-                // Eliminar la transacción pendiente
                 handleCommand.transaccionesPendientes.delete(quotedMessageId);
                 return;
               }
