@@ -1,6 +1,5 @@
 // Cargar variables de entorno desde la raíz del proyecto
 require('dotenv').config({ path: require('path').join(process.cwd(), '.env') });
-console.log("✅ Clave IMGBB_KEY cargada en commands:", process.env.IMGBB_KEY);
 
 const User = require('../models/User');
 const Tienda = require('../models/Tienda');
@@ -9,11 +8,9 @@ const axios = require('axios');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const fmt = require('../../format');
 
-// Almacén en memoria para:
-// 1. Usuarios en modo "diseño de tienda"
-// 2. Transacciones pendientes de compra (key: messageId, value: transacción)
-const modoDiseñoTienda = new Map(); // { userId: true }
-const transaccionesPendientes = new Map(); // { messageId: { compradorId, vendedorId, monto, producto } }
+// Almacén en memoria compartido con index.js
+const modoDiseñoTienda = new Map();
+const transaccionesPendientes = new Map();
 
 // Función auxiliar para subir búfers de imágenes directamente a ImgBB
 async function subirAImgBB(bufferImagen) {
@@ -24,15 +21,13 @@ async function subirAImgBB(bufferImagen) {
 
     const apiKey = process.env.IMGBB_KEY;
     if (!apiKey) {
-      console.error('❌ Falta IMGBB_KEY en el archivo .env');
+      console.error('❌ Falta la variable IMGBB_KEY en el entorno.');
       return '';
     }
 
-    const response = await axios.post(
-      `https://api.imgbb.com/1/upload?key=${apiKey}`,
-      form,
-      { headers: form.getHeaders() }
-    );
+    const response = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}`, form, {
+      headers: form.getHeaders(),
+    });
 
     return response.data?.data?.url || '';
   } catch (error) {
@@ -41,20 +36,28 @@ async function subirAImgBB(bufferImagen) {
   }
 }
 
+// Función auxiliar para limpiar texto (eliminar emojis, símbolos comunes y espacios)
+function limpiarTexto(texto) {
+  return texto
+    .toLowerCase()
+    .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[*_~`•✨⚡️💥☄️🌌⚔️🛡️👑💰🛒🏪💎]/g, '')
+    .trim();
+}
+
 module.exports = {
   // --- COMANDOS ADMINISTRATIVOS ---
+  
   pagar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
       if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins.'));
       
-      // Extraer JID de la mención (Baileys seguridad)
       const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
       if (!mentionedJid || args.length < 2) return reply(fmt.aviso('Uso: !pagar @usuario [monto]'));
 
       const cantidad = parseInt(args[1]);
       if (isNaN(cantidad) || cantidad <= 0) return reply(fmt.aviso('Monto inválido.'));
 
-      // Obtener/crear usuario y actualizar saldo
       let usuario = await User.findById(mentionedJid);
       if (!usuario) usuario = new User({ _id: mentionedJid });
       usuario.saldo += cantidad;
@@ -63,7 +66,7 @@ module.exports = {
       await sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`Pagado @${mentionedJid.split('@')[0]} +${cantidad}`), mentions: [mentionedJid] }, { quoted: m });
     } catch (err) {
       console.error('Error en !pagar:', err);
-      reply(fmt.aviso('Error al procesar.'));
+      reply(fmt.aviso('Error al procesar el pago.'));
     }
   },
 
@@ -79,13 +82,13 @@ module.exports = {
 
       let usuario = await User.findById(mentionedJid);
       if (!usuario) usuario = new User({ _id: mentionedJid });
-      usuario.saldo = Math.max(0, usuario.saldo - cantidad); // No permitir saldo negativo
+      usuario.saldo = Math.max(0, usuario.saldo - cantidad);
       await usuario.save();
 
       await sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`Cobrado @${mentionedJid.split('@')[0]} -${cantidad}`), mentions: [mentionedJid] }, { quoted: m });
     } catch (err) {
       console.error('Error en !cobrar:', err);
-      reply(fmt.aviso('Error al procesar.'));
+      reply(fmt.aviso('Error al procesar el cobro.'));
     }
   },
 
@@ -93,24 +96,24 @@ module.exports = {
     try {
       if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins.'));
       
-      const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-      if (!mentionedJid) return reply(fmt.aviso('Uso: !tienda aprobar @usuario'));
+      const targetJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || sender;
 
-      let tienda = await Tienda.findOne({ ownerId: mentionedJid });
+      let tienda = await Tienda.findOne({ ownerId: targetJid });
       if (!tienda) {
-        tienda = new Tienda({ ownerId: mentionedJid });
+        tienda = new Tienda({ ownerId: targetJid, diseñoLibre: '🏪 *Tienda en desarrollo*' });
       }
       tienda.aprobada = true;
       await tienda.save();
 
-      await sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`Tienda de @${mentionedJid.split('@')[0]} aprobada!`), mentions: [mentionedJid] }, { quoted: m });
+      await sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`Tienda de @${targetJid.split('@')[0]} aprobada con éxito.`), mentions: [targetJid] }, { quoted: m });
     } catch (err) {
       console.error('Error en !tienda aprobar:', err);
-      reply(fmt.aviso('Error al procesar.'));
+      reply(fmt.aviso('Error al aprobar la tienda.'));
     }
   },
 
   // --- COMANDOS DE USUARIO ---
+  
   saldo: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
       let usuario = await User.findById(sender);
@@ -122,7 +125,7 @@ module.exports = {
       }, { quoted: m });
     } catch (err) {
       console.error('Error en !saldo:', err);
-      reply(fmt.aviso('Error al procesar.'));
+      reply(fmt.aviso('Error al obtener el saldo.'));
     }
   },
 
@@ -136,7 +139,6 @@ module.exports = {
       const cantidad = parseInt(args[1]);
       if (isNaN(cantidad) || cantidad <= 0) return reply(fmt.aviso('Monto inválido.'));
 
-      // Obtener usuarios
       let emisor = await User.findById(sender);
       if (!emisor) emisor = new User({ _id: sender });
       
@@ -145,314 +147,72 @@ module.exports = {
       let receptor = await User.findById(mentionedJid);
       if (!receptor) receptor = new User({ _id: mentionedJid });
 
-      // Realizar transferencia
       emisor.saldo -= cantidad;
       receptor.saldo += cantidad;
       await emisor.save();
       await receptor.save();
 
       await sock.sendMessage(m.key.remoteJid, {
-        text: fmt.aviso(`Transferencia de @${sender.split('@')[0]} a @${mentionedJid.split('@')[0]}: ${cantidad} monedas!`),
+        text: fmt.aviso(`Transferencia exitosa de @${sender.split('@')[0]} a @${mentionedJid.split('@')[0]}: ${cantidad} monedas!`),
         mentions: [sender, mentionedJid]
       }, { quoted: m });
     } catch (err) {
       console.error('Error en !transferir:', err);
-      reply(fmt.aviso('Error al procesar.'));
+      reply(fmt.aviso('Error al procesar la transferencia.'));
     }
   },
 
-  // --- GESTIÓN DE TIENDA ---
-  'mitienda abrir': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      let tienda = await Tienda.findOne({ ownerId: sender });
-      if (!tienda) tienda = new Tienda({ ownerId: sender });
-      
-      tienda.abierta = true;
-      await tienda.save();
-      
-      reply(fmt.aviso('Tienda abierta!'));
-    } catch (err) {
-      console.error('Error en !mitienda abrir:', err);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
+  // --- GESTIÓN ÚNICA DE TIENDAS ---
 
-  'mitienda cerrar': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      let tienda = await Tienda.findOne({ ownerId: sender });
-      if (!tienda) tienda = new Tienda({ ownerId: sender });
-      
-      tienda.abierta = false;
-      await tienda.save();
-      
-      reply(fmt.aviso('Tienda cerrada!'));
-    } catch (err) {
-      console.error('Error en !mitienda cerrar:', err);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
-
-  'mitienda diseño': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      // Activar modo diseño
-      modoDiseñoTienda.set(sender, true);
-      reply(fmt.aviso('Envía tu diseño de tienda en el siguiente mensaje (respeta saltos de línea y formato)!'));
-    } catch (err) {
-      console.error('Error en !mitienda diseño:', err);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
-
-  'mitienda set-banner': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      // Verificar que el mensaje tenga una imagen citada (Baileys quoted message)
-      const quotedMessage = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-      if (!quotedMessage || (!quotedMessage.imageMessage && !quotedMessage.stickerMessage)) {
-        return reply(fmt.aviso('Debes responder a una imagen para establecer el banner.'));
-      }
-
-      // Descargar media usando Baileys
-      const mediaBuffer = await downloadMediaMessage(
-        { message: quotedMessage }, // Objeto con la estructura esperada
-        'buffer', 
-        {}, 
-        { logger: console }
-      );
-      
-      // Subir a ImgBB (necesita API Key en .env como IMGBB_KEY)
-      const imgbbKey = process.env.IMGBB_KEY;
-      if (!imgbbKey) {
-        return reply(fmt.aviso('Falta configurar IMGBB_KEY en el archivo .env.'));
-      }
-
-      // Usar FormData para enviar la imagen correctamente
-      const FormData = require('form-data');
-      const form = new FormData();
-      form.append('image', mediaBuffer.toString('base64'));
-
-      console.log("Subiendo banner a ImgBB...");
-      
-      const response = await axios.post(
-        `https://api.imgbb.com/1/upload?key=${imgbbKey}`,
-        form,
-        { headers: form.getHeaders() }
-      );
-
-      if (response.data.success) {
-        let tienda = await Tienda.findOne({ ownerId: sender });
-        if (!tienda) tienda = new Tienda({ ownerId: sender });
-        
-        tienda.imagenUrl = response.data.data.url;
-        await tienda.save();
-        
-        reply(fmt.aviso('Banner guardado!'));
-      } else {
-        console.error("❌ Error detallado de ImgBB:", response.data);
-        reply(fmt.aviso('Error al subir la imagen a ImgBB.'));
-      }
-    } catch (err) {
-      console.error('Error en !mitienda set-banner:', err.response?.data || err.message);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
-
-  'mitienda añadir': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      if (args.length < 1) return reply(fmt.aviso('Uso: !mitienda añadir [Producto - Precio]'));
-      
-      const fullText = args.join(' ');
-      
-      // Extraer nombre y precio del nuevo producto
-      const nuevoProductoMatch = fullText.match(/^(.+) - (\d+)$/);
-      if (!nuevoProductoMatch) {
-        return reply(fmt.aviso('Formato inválido. Usa: [Nombre Producto] - [Precio]'));
-      }
-      const [, nuevoNombre, nuevoPrecioStr] = nuevoProductoMatch;
-      const nuevoPrecio = parseInt(nuevoPrecioStr);
-
-      // Obtener la tienda
-      let tienda = await Tienda.findOne({ ownerId: sender });
-      if (!tienda) tienda = new Tienda({ ownerId: sender });
-
-      // Analizar el diseñoLibre para encontrar el patrón decorativo
-      const lineas = tienda.diseñoLibre.split('\n').filter(linea => linea.trim() !== '');
-      
-      // Buscar la última línea que tenga el formato "Texto - Número"
-      let prefijo = '';
-      let sufijo = '';
-      const regexProducto = /^(.+?)(.+) - (\d+)(.*)$/;
-      
-      for (let i = lineas.length - 1; i >= 0; i--) {
-        const match = lineas[i].match(regexProducto);
-        if (match) {
-          prefijo = match[1];
-          sufijo = match[4];
-          break;
-        }
-      }
-
-      // Generar la nueva línea
-      const nuevaLinea = `${prefijo}${nuevoNombre} - ${nuevoPrecio}${sufijo}`;
-      
-      // Agregarla al diseñoLibre
-      tienda.diseñoLibre = tienda.diseñoLibre 
-        ? `${tienda.diseñoLibre}\n${nuevaLinea}` 
-        : nuevaLinea;
-      
-      await tienda.save();
-      
-      reply(fmt.aviso('Producto añadido!'));
-    } catch (err) {
-      console.error('Error en !mitienda añadir:', err);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
-
-  // --- VISUALIZACIÓN Y COMPRA ---
-  'ver-tienda': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-      if (!mentionedJid) return reply(fmt.aviso('Uso: !ver-tienda @usuario'));
-
-      const tienda = await Tienda.findOne({ ownerId: mentionedJid });
-      if (!tienda || !tienda.aprobada) {
-        return reply(fmt.aviso('Esta tienda no existe o no está aprobada.'));
-      }
-
-      const contenidoTienda = tienda.diseñoLibre || 'Tienda sin diseño.';
-
-      if (tienda.imagenUrl) {
-        // Enviar imagen con caption y menciones
-        await sock.sendMessage(m.key.remoteJid, {
-          image: { url: tienda.imagenUrl },
-          caption: contenidoTienda,
-          mentions: [mentionedJid]
-        }, { quoted: m });
-      } else {
-        // Enviar solo texto con menciones
-        await sock.sendMessage(m.key.remoteJid, {
-          text: contenidoTienda,
-          mentions: [mentionedJid]
-        }, { quoted: m });
-      }
-    } catch (err) {
-      console.error('Error en !ver-tienda:', err);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
-
-  comprar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
-    try {
-      const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-      if (!mentionedJid || args.length < 2) return reply(fmt.aviso('Uso: !comprar @dueño [nombre producto]'));
-
-      const tienda = await Tienda.findOne({ ownerId: mentionedJid });
-      if (!tienda || !tienda.aprobada || !tienda.abierta) {
-        return reply(fmt.aviso('Esta tienda no está disponible.'));
-      }
-
-      const nombreProducto = args.slice(1).join(' ');
-      
-      // Buscar producto en el diseñoLibre usando Regex
-      const regexBusqueda = new RegExp(`(.+?)${nombreProducto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} - (\\d+)(.*)`, 'i');
-      const match = tienda.diseñoLibre.match(regexBusqueda);
-      
-      if (!match) {
-        return reply(fmt.aviso(`Producto "${nombreProducto}" no encontrado en la tienda.`));
-      }
-
-      const precio = parseInt(match[2]);
-
-      // Verificar saldo del comprador
-      let comprador = await User.findById(sender);
-      if (!comprador) comprador = new User({ _id: sender });
-      
-      if (comprador.saldo < precio) {
-        return reply(fmt.aviso('Saldo insuficiente.'));
-      }
-
-      // Enviar mensaje de confirmación y guardar transacción pendiente
-      const mensajeConfirmacion = await sock.sendMessage(m.key.remoteJid, {
-        text: `💰 @${mentionedJid.split('@')[0]}, el usuario @${sender.split('@')[0]} quiere comprar '${nombreProducto}' por ${precio} monedas. Responde a este mensaje con !aceptar para confirmar la venta o !rechazar para cancelarla.`,
-        mentions: [mentionedJid, sender]
-      }, { quoted: m });
-
-      // Almacenar transacción pendiente
-      transaccionesPendientes.set(mensajeConfirmacion.key.id, {
-        compradorId: sender,
-        vendedorId: mentionedJid,
-        monto: precio,
-        producto: nombreProducto,
-        messageId: mensajeConfirmacion.key.id
-      });
-      
-    } catch (err) {
-      console.error('Error en !comprar:', err);
-      reply(fmt.aviso('Error al procesar.'));
-    }
-  },
-
-  // --- NUEVOS COMANDOS DE TIENDA ---
   mitienda: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
       const subcomando = args[0]?.toLowerCase();
 
-      // Subcomando: !mitienda diseñar [texto] (Soporta imagen adjunta)
+      // Manejar comandos obsoletos
+      if (['abrir', 'cerrar', 'diseño', 'set-banner'].includes(subcomando)) {
+        return reply(fmt.aviso('Comando obsoleto. Ahora todo se hace usando de forma limpia: `!mitienda diseñar [texto]` (puedes adjuntar foto).'));
+      }
+
+      // Subcomando: !mitienda diseñar [texto]
       if (subcomando === 'diseñar') {
         const diseño = args.slice(1).join(' ');
-        
-        // Verificar si hay una imagen en el mensaje actual o en el citado
         const tieneImagen = m.message?.imageMessage || 
-                            (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
+                            m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
 
         if (!diseño && !tieneImagen) {
-          return reply(fmt.aviso('Uso: !mitienda diseñar [texto estético] (Puedes adjuntar una imagen o responder a una)'));
+          return reply(fmt.aviso('Uso: !mitienda diseñar [texto de tu tienda] (Puedes adjuntar o citar una foto)'));
         }
 
         let tienda = await Tienda.findOne({ ownerId: sender });
         if (!tienda) tienda = new Tienda({ ownerId: sender });
 
-        // Si el usuario adjuntó o citó una imagen, la descargamos y subimos a ImgBB
         if (tieneImagen) {
-          await sock.sendMessage(groupId, { text: '⏳ _Procesando y subiendo la imagen de tu comercio a la nube..._' }, { quoted: m });
+          await sock.sendMessage(groupId, { text: '⏳ _Subiendo imagen de tu comercio a la nube..._' }, { quoted: m });
           try {
-            // Descargar usando la función nativa de Baileys
-            let mediaMessage;
-            if (m.message?.imageMessage) {
-              mediaMessage = m;
-            } else {
-              mediaMessage = { message: m.message.extendedTextMessage.contextInfo.quotedMessage };
-            }
-            
-            const buffer = await downloadMediaMessage(
-              mediaMessage,
-              'buffer',
-              {},
-              { logger: console }
-            );
+            let mediaMessage = m.message?.imageMessage ? m : { message: m.message.extendedTextMessage.contextInfo.quotedMessage };
+            const buffer = await downloadMediaMessage(mediaMessage, 'buffer', {}, { logger: console });
 
             const urlSubida = await subirAImgBB(buffer);
             if (urlSubida) {
               tienda.imagenUrl = urlSubida;
             } else {
-              return reply(fmt.aviso('No se pudo procesar la imagen adjunta. Inténtalo de nuevo.'));
+              return reply(fmt.aviso('No se pudo procesar la imagen. Inténtalo de nuevo.'));
             }
           } catch (errImg) {
             console.error('Error descargando multimedia:', errImg);
-            return reply(fmt.aviso('Error crítico al procesar el archivo multimedia de Baileys.'));
+            return reply(fmt.aviso('Error crítico al procesar el archivo de imagen.'));
           }
         }
 
-        // Si envió texto, actualizamos el diseño libre
         if (diseño) {
           tienda.diseñoLibre = diseño;
         }
 
         await tienda.save();
-        return reply('✅ ¡Los datos visuales de tu tienda han sido actualizados! Usa `!mitienda` para ver el resultado.');
+        return reply('✅ ¡La información visual de tu tienda ha sido actualizada!');
       }
 
-      // Visualización base de !mitienda
+      // Visualización base limpia de !mitienda
       let tienda = await Tienda.findOne({ ownerId: sender });
       if (!tienda) {
         tienda = new Tienda({
@@ -462,13 +222,8 @@ module.exports = {
         await tienda.save();
       }
 
-      const avisoAprobada = tienda.aprobada
-        ? '🟢 *Estado:* Abierta al público'
-        : '🟡 *Estado:* Pendiente de aprobación (Usa `!tienda aprobar` siendo Admin)';
+      const textoFinal = `${tienda.diseñoLibre}`;
 
-      const textoFinal = `${tienda.diseñoLibre}\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n⚠️ _${avisoAprobada}_`;
-
-      // Si tiene imagen guardada, se manda la imagen con el diseño de texto de caption
       if (tienda.imagenUrl) {
         await sock.sendMessage(groupId, {
           image: { url: tienda.imagenUrl },
@@ -487,22 +242,19 @@ module.exports = {
 
   tienda: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
     try {
-      if (args[0] === 'aprobar') return; // Evitar interferencias con subcomandos
+      if (args[0] === 'aprobar') return;
 
       const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
       if (!mentionedJid) return reply(fmt.aviso('Uso: !tienda @usuario'));
 
       const tienda = await Tienda.findOne({ ownerId: mentionedJid });
       if (!tienda || !tienda.aprobada) {
-        return reply(fmt.aviso('Este usuario no tiene una tienda registrada o activa en el reino.'));
+        return reply(fmt.aviso('Este usuario no posee una tienda registrada o activa en el reino.'));
       }
 
       const jidClean = mentionedJid.split('@')[0];
-      
-      // Se muestra únicamente el diseño que le puso el propietario
       const textoAMostrar = `${tienda.diseñoLibre}\n\n🛒 _Para comprar usa: !comprar @${jidClean} [Producto]_`;
 
-      // Si tiene imagen, se envía el archivo multimedia directamente
       if (tienda.imagenUrl) {
         await sock.sendMessage(groupId, {
           image: { url: tienda.imagenUrl },
@@ -518,7 +270,119 @@ module.exports = {
     }
   },
 
-  // Exportamos las estructuras de memoria para index.js
-  modoDiseñoTienda,
-  transaccionesPendientes
+  'mitienda añadir': async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    try {
+      if (args.length < 1) return reply(fmt.aviso('Uso: !mitienda añadir [Producto - Precio]'));
+      
+      const fullText = args.join(' ');
+      const nuevoProductoMatch = fullText.match(/^(.+) - (\d+)$/);
+      if (!nuevoProductoMatch) {
+        return reply(fmt.aviso('Formato inválido. Usa: [Nombre] - [Precio]'));
+      }
+      const [, nuevoNombre, nuevoPrecioStr] = nuevoProductoMatch;
+      const nuevoPrecio = parseInt(nuevoPrecioStr);
+
+      let tienda = await Tienda.findOne({ ownerId: sender });
+      if (!tienda) tienda = new Tienda({ ownerId: sender });
+
+      const lineas = tienda.diseñoLibre.split('\n').filter(linea => linea.trim() !== '');
+      
+      let prefijo = '';
+      let sufijo = '';
+      const regexProducto = /^(.+?)(.+) - (\d+)(.*)$/;
+      
+      for (let i = lineas.length - 1; i >= 0; i--) {
+        const match = lineas[i].match(regexProducto);
+        if (match) {
+          prefijo = match[1];
+          sufijo = match[4];
+          break;
+        }
+      }
+
+      const nuevaLinea = `${prefijo}${nuevoNombre} - ${nuevoPrecio}${sufijo}`;
+      tienda.diseñoLibre = tienda.diseñoLibre ? `${tienda.diseñoLibre}\n${nuevaLinea}` : nuevaLinea;
+      await tienda.save();
+      
+      reply(fmt.aviso('Producto añadido exitosamente a tu diseño libre!'));
+    } catch (err) {
+      console.error('Error en !mitienda añadir:', err);
+      reply(fmt.aviso('Error al procesar el producto.'));
+    }
+  },
+
+  // --- COMPRA INTELIGENTE LIBRE DE ADORNOS ---
+  
+  comprar: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+    try {
+      const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+      if (!mentionedJid) return reply(fmt.aviso('Uso: !comprar @vendedor [Nombre del Producto]'));
+
+      const nombreProductoBuscado = args.slice(1).join(' ');
+      if (!nombreProductoBuscado) return reply(fmt.aviso('Especifica el producto que deseas adquirir.'));
+
+      if (sender === mentionedJid) return reply(fmt.aviso('No puedes comprar en tu propia tienda.'));
+
+      const tienda = await Tienda.findOne({ ownerId: mentionedJid });
+      if (!tienda || !tienda.aprobada) return reply(fmt.aviso('Este comercio no está activo en el reino.'));
+
+      const lineasTienda = tienda.diseñoLibre.split('\n');
+      let productoEncontrado = null;
+      let precioProducto = 0;
+
+      const busquedaLimpia = limpiarTexto(nombreProductoBuscado);
+
+      for (let linea of lineasTienda) {
+        if (!linea.includes('-')) continue;
+
+        const partes = linea.split('-');
+        const nombreItemOriginal = partes[0];
+        const precioYMas = partes[1];
+
+        const nombreItemLimpio = limpiarTexto(nombreItemOriginal);
+
+        if (nombreItemLimpio.includes(busquedaLimpia) || busquedaLimpia.includes(nombreItemLimpio)) {
+          const matchPrecio = precioYMas.match(/\d+/);
+          if (matchPrecio) {
+            productoEncontrado = nombreItemOriginal.replace(/[*_~`]/g, '').trim();
+            precioProducto = parseInt(matchPrecio[0]);
+            break;
+          }
+        }
+      }
+
+      if (!productoEncontrado || precioProducto <= 0) {
+        return reply(fmt.aviso(`El artículo "${nombreProductoBuscado}" no coincide con ningún producto listado.`));
+      }
+
+      let comprador = await User.findById(sender);
+      if (!comprador) comprador = new User({ _id: sender });
+      
+      if (comprador.saldo < precioProducto) {
+        return reply(fmt.aviso(`Saldo insuficiente. Necesitas *${precioProducto} monedas* y tienes *${comprador.saldo}*.`));
+      }
+
+      const mensajeConfirmacion = await sock.sendMessage(groupId, {
+        text: `💰 @${mentionedJid.split('@')[0]}, el usuario @${sender.split('@')[0]} desea adquirir:\n📦 *Producto:* ${productoEncontrado}\n🪙 *Precio:* ${precioProducto} monedas.\n\n_Responde a este mensaje con *!aceptar* para entregar el producto y cobrar, o *!rechazar* para cancelar la venta._`,
+        mentions: [mentionedJid, sender]
+      }, { quoted: m });
+
+      if (transaccionesPendientes) {
+        transaccionesPendientes.set(mensajeConfirmacion.key.id, {
+          compradorId: sender,
+          vendedorId: mentionedJid,
+          monto: precioProducto,
+          producto: productoEncontrado,
+          messageId: mensajeConfirmacion.key.id
+        });
+      }
+      
+    } catch (err) {
+      console.error('Error en !comprar:', err);
+      reply(fmt.aviso('Ocurrió un error al procesar la compra.'));
+    }
+  }
 };
+
+module.exports.modoDiseñoTienda = modoDiseñoTienda;
+module.exports.transaccionesPendientes = transaccionesPendientes;
