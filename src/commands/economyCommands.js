@@ -182,24 +182,51 @@ module.exports = {
       }
 
       if (subcomando === 'diseñar') {
-        const diseño = args.slice(1).join(' ');
+        // 1. Capturar todo el texto de origen para preservar saltos de línea (\n) perfectamente
+        const textoOriginal = m.message?.conversation ||
+                              m.message?.extendedTextMessage?.text ||
+                              m.message?.imageMessage?.caption ||
+                              m.message?.viewOnceMessage?.message?.imageMessage?.caption ||
+                              m.message?.ephemeralMessage?.message?.imageMessage?.caption ||
+                              "";
+
+        const lowerText = textoOriginal.toLowerCase();
+        const indexDisenar = lowerText.indexOf('diseñar');
+        let diseño = '';
         
-        const imgMessage = m.message?.imageMessage;
-        const quotedMessage = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        const quotedImgMessage = quotedMessage?.imageMessage || quotedMessage?.viewOnceMessage?.message?.imageMessage;
+        // Cortar el texto justo después de la palabra "diseñar"
+        if (indexDisenar !== -1) {
+          diseño = textoOriginal.substring(indexDisenar + 'diseñar'.length).trim();
+        }
+
+        // 2. Detección profunda de imágenes (Directas, Ver una vez, Efímeras o Citadas)
+        const imgMessage = m.message?.imageMessage ||
+                           m.message?.viewOnceMessage?.message?.imageMessage ||
+                           m.message?.ephemeralMessage?.message?.imageMessage;
+
+        const contextInfo = m.message?.extendedTextMessage?.contextInfo ||
+                            m.message?.imageMessage?.contextInfo ||
+                            m.message?.viewOnceMessage?.message?.imageMessage?.contextInfo;
+
+        const quotedMessage = contextInfo?.quotedMessage;
+        const quotedImgMessage = quotedMessage?.imageMessage ||
+                                 quotedMessage?.viewOnceMessage?.message?.imageMessage ||
+                                 quotedMessage?.ephemeralMessage?.message?.imageMessage;
+
         const tieneImagen = imgMessage || quotedImgMessage;
 
         if (!diseño && !tieneImagen) {
-          return reply(fmt.aviso('Uso: !mitienda diseñar [texto] (Puedes adjuntar foto)'));
+          return reply(fmt.aviso('Uso: !mitienda diseñar [Productos/Descripción] (Puedes adjuntar o responder a una foto)'));
         }
 
         let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
         if (!tienda) tienda = new Tienda({ ownerId: sender, groupId: groupId });
 
+        // 3. Procesamiento seguro del archivo multimedia
         if (tieneImagen) {
-          await sock.sendMessage(groupId, { text: '⏳ _Subiendo imagen..._' }, { quoted: m });
+          await sock.sendMessage(groupId, { text: '⏳ _Procesando y subiendo imagen..._' }, { quoted: m });
           try {
-            let mediaMessage = imgMessage ? m : { message: quotedMessage?.viewOnceMessage?.message ? quotedMessage.viewOnceMessage.message : quotedMessage };
+            let mediaMessage = imgMessage ? m : { message: quotedMessage };
             const buffer = await downloadMediaMessage(mediaMessage, 'buffer', {}, { logger: console });
 
             if (buffer) {
@@ -208,15 +235,20 @@ module.exports = {
             }
           } catch (errImg) {
             console.error('Error descargando imagen:', errImg);
-            return reply(fmt.aviso('Error crítico al procesar el archivo de imagen.'));
+            return reply(fmt.aviso('Error al procesar el archivo de imagen.'));
           }
         }
 
-        if (diseño) tienda.diseñoLibre = diseño;
+        // 4. Guardar el diseño de texto si fue provisto
+        if (diseño) {
+          tienda.diseñoLibre = diseño;
+        }
+        
         await tienda.save();
         return reply('✅');
       }
 
+      // --- MOSTRAR TIENDA (Si solo se ejecuta !mitienda) ---
       let tienda = await Tienda.findOne({ ownerId: sender, groupId: groupId });
       if (!tienda) {
         tienda = new Tienda({
