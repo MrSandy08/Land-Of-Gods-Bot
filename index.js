@@ -292,6 +292,7 @@ async function startBot() {
       await Group.findOneAndUpdate({ _id: groupId }, { _id: groupId }, { upsert: true });
 
       if (action === 'remove') {
+        // Si la acción es 'remove' (alguien sale o es expulsado), cancelamos la ejecución
         for (const userId of participants) {
           try {
             const tg = await UserGroup.findOne({ userId });
@@ -306,23 +307,12 @@ async function startBot() {
               await tg.save();
 
               console.log(`[Ecosistema] @${userId.split('@')[0]} salió del grupo. Personaje liberado y temporizador de 2 semanas iniciado.`);
-
-              if (char) {
-                const text = fmt.header('Notificación de Salida') + '\n' +
-                             fmt.aviso(`El usuario @${userId.split('@')[0]} ha dejado el grupo/comunidad.\n\nEl personaje *${char}* (${fandom}) queda *LIBRE*.`);
-
-                await sock.sendMessage(groupId, { text, mentions: [userId] });
-
-                const groups = await Group.find({ _id: { $ne: groupId } });
-                for (let g of groups) {
-                  await sock.sendMessage(g._id, { text, mentions: [userId] }).catch(() => null);
-                }
-              }
             }
           } catch (err) {
             console.error('Error al procesar salida de usuario:', err);
           }
         }
+        return;
       }
     } catch (err) {
       console.error('Error en group-participants.update:', err);

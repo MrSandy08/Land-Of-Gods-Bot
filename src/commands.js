@@ -7,6 +7,7 @@ const excuseCommands = require('./commands/excuseCommands');
 const economyCommands = require('./commands/economyCommands');
 
 const UserGroup = require('./models/UserGroup');
+const fmt = require('../format');
 
 const handleCommand = async (sock, m, command, args, currentUser, globalConfig, groupConfig, groupId, sender) => {
     const remoteJid = m.key.remoteJid;
@@ -68,7 +69,7 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
             return await sock.sendMessage(remoteJid, { text, mentions: [sender] }, { quoted: m });
         };
     } else {
-        // Modo silencioso: intercepta el texto y lo convierte en reacción ✅ o ❌
+        // Modificado para reaccionar con X y mandar texto en errores normales de comandos
         reply = async (text) => {
             const txt = text.toLowerCase();
             const esError = txt.includes('error') ||
@@ -79,14 +80,58 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
                             txt.includes('no se encontró') ||
                             txt.includes('no está activo');
 
-            const emoji = esError ? '❌' : '✅';
             try {
-                return await sock.sendMessage(remoteJid, { react: { text: emoji, key: m.key } });
+                if (esError) {
+                    // Reacciona con X al mensaje del usuario
+                    await sock.sendMessage(remoteJid, { react: { text: '❌', key: m.key } });
+                    // Y envía el texto explicativo
+                    return await sock.sendMessage(remoteJid, { text: text }, { quoted: m });
+                } else {
+                    return await sock.sendMessage(remoteJid, { react: { text: '✅', key: m.key } });
+                }
             } catch (err) {
-                console.error('Error al reaccionar:', err);
+                console.error('Error al reaccionar/responder:', err);
             }
         };
     }
+
+    // === CONTROL DE ADMINISTRADORES (MODO SOLO ADMINS) ===
+    const { isAdmin } = require('./utils');
+
+    // 1. Comando para encender/apagar el modo restrictivo
+    if (command === 'botmodoadmin') {
+        try {
+            if (!(await isAdmin(m, sock))) {
+                // Si un usuario normal intenta usar este comando, solo le tiramos la X con el texto de error regular
+                return reply(fmt.aviso('Solo los administradores del grupo pueden usar este comando.'));
+            }
+
+            // Cambiar el estado en el documento del grupo de la DB
+            groupConfig.soloAdmins = !groupConfig.soloAdmins;
+            await groupConfig.save();
+
+            const estado = groupConfig.soloAdmins ? 'ACTIVADO 🔒 (Solo admins pueden usar el bot)' : 'DESACTIVADO 🔓 (Todos pueden usar el bot)';
+            return sock.sendMessage(remoteJid, { text: fmt.aviso(`Configuración actualizada:\nEl modo administración está *${estado}*.`) }, { quoted: m });
+        } catch (err) {
+            console.error('Error en comando !botmodoadmin:', err);
+            return reply(fmt.aviso('Ocurrió un error al cambiar la configuración del grupo.'));
+        }
+    }
+
+    // 2. Bloqueo global estricto: Si está activo y NO es admin, SOLO pone la X y detiene todo
+    if (groupConfig?.soloAdmins) {
+        const usuarioEsAdmin = await isAdmin(m, sock);
+        if (!usuarioEsAdmin) {
+            try {
+                // Coloca únicamente la reacción de la cruz roja en el mensaje del usuario
+                return await sock.sendMessage(remoteJid, { react: { text: '❌', key: m.key } });
+            } catch (err) {
+                console.error('Error enviando reacción de bloqueo:', err);
+            }
+            return; // Frena por completo que el bot procese el comando o responda texto
+        }
+    }
+    // ======================================================
 
     // 5. Ejecución segura del comando
     try {
