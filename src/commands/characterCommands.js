@@ -102,34 +102,92 @@ module.exports = {
         }
     },
 
+    // === COMANDO PERFIL (REPARADO Y REESCRITO) ===
+    perfil: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
+        try {
+            const jidClean = sender.split('@')[0];
+            
+            // Verificamos si tiene personaje asignado en este grupo/comunidad
+            const personaje = userGroup?.personaje || 'Sin personaje';
+            const fandom = userGroup?.fandom || 'Ninguno';
+            
+            let text = `👤 *PERFIL DE USUARIO*\n\n`;
+            text += `• *Usuario:* @${jidClean}\n`;
+            text += `• *Personaje:* ${personaje}\n`;
+            text += `• *Fandom:* (${fandom})\n`;
+            
+            // Si el modelo global de economía tiene saldo
+            if (currentUser && typeof currentUser.saldo !== 'undefined') {
+                text += `• *Saldo:* ${currentUser.saldo} monedas\n`;
+            }
+
+            await sock.sendMessage(m.key.remoteJid, { text, mentions: [sender] }, { quoted: m });
+        } catch (err) {
+            console.error('Error en !perfil:', err);
+            reply(fmt.aviso('Error al cargar tu perfil.'));
+        }
+    },
+
+    // === INTERRUPTOR: SOLO ADMINS ===
+    botmodoadmin: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
+        try {
+            if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins pueden usar este comando.'));
+            
+            const Group = require('../models/Group'); // Importamos tu modelo real
+            const groupConfig = await Group.findById(groupId);
+            
+            if (!groupConfig) return reply(fmt.aviso('Error: No se encontró la configuración del grupo.'));
+
+            // Cambiamos el estado (si está en true pasa a false, y viceversa)
+            groupConfig.soloAdmins = !groupConfig.soloAdmins;
+            await groupConfig.save();
+
+            const estado = groupConfig.soloAdmins ? 'ACTIVADO 🔒 (Solo admins pueden usar el bot)' : 'DESACTIVADO 🔓 (Todos pueden usar el bot)';
+            return sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`El modo administración ha sido *${estado}*.`) }, { quoted: m });
+        } catch (err) {
+            console.error('Error en !botmodoadmin:', err);
+            reply(fmt.aviso('Ocurrió un error al cambiar la configuración.'));
+        }
+    },
+
     personajes: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
             const groupDoc = await Group.findById(groupId);
             const comunidadId = groupDoc?.comunidadId;
 
-            let filter = { personaje: { $ne: null } };
+            let filter = { personaje: { $exists: true, $ne: "Sin personaje", $ne: "" } };
             if (comunidadId) {
                 filter.comunidadId = comunidadId;
             } else {
                 filter.groupId = groupId;
             }
 
-            const users = await UserGroup.find(filter)
-                .sort({ fandom: 1 })
-                .select('userId personaje fandom')
-                .lean();
+            const users = await UserGroup.find(filter).select('userId personaje fandom').lean();
+            if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
 
-            if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados.'));
+            // Agrupación dinámica por Fandom
+            const mapaFandoms = {};
+            users.forEach(u => {
+                const fandomNombre = u.fandom ? u.fandom.trim() : 'Otros';
+                if (!mapaFandoms[fandomNombre]) {
+                    mapaFandoms[fandomNombre] = [];
+                }
+                mapaFandoms[fandomNombre].push(u);
+            });
 
             let text = fmt.header();
-            text += fmt.listSection('LISTA DE PERSONAJES');
+            text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS\n');
             const mentions = [];
 
-            users.forEach((u) => {
-                const jidClean = u.userId.split('@')[0];
-                text += fmt.listItem(`@${jidClean}  𝄄 *${u.personaje}* _(${u.fandom})_`);
-                mentions.push(u.userId);
-            });
+            // Construir la lista seccionada por Fandoms
+            for (const [fandom, listaUsuarios] of Object.entries(mapaFandoms)) {
+                text += `\n🎭 *${fandom.toUpperCase()}*\n`;
+                listaUsuarios.forEach(u => {
+                    const jidClean = u.userId.split('@')[0];
+                    text += fmt.listItem(`@${jidClean} - *${u.personaje}*\n`);
+                    mentions.push(u.userId);
+                });
+            }
 
             await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
         } catch (err) {

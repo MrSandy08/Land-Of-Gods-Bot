@@ -60,7 +60,7 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
     const comandosConTexto = [
         'menu', 'top', 'low', 'inactivos', 'advertencias',
         'personajes', 'pedidos', 'sinpersonaje', 'sugerencias',
-        'mitienda', 'tienda', 'saldo', 'mitienda diseñar', 'mitienda añadir'
+        'mitienda', 'tienda', 'saldo', 'mitienda diseñar', 'mitienda añadir', 'perfil', 'botmodoadmin'
     ];
 
     let reply;
@@ -95,43 +95,23 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
         };
     }
 
-    // === CONTROL DE ADMINISTRADORES (MODO SOLO ADMINS) ===
-    const { isAdmin } = require('./utils');
-
-    // 1. Comando para encender/apagar el modo restrictivo
-    if (command === 'botmodoadmin') {
-        try {
-            if (!(await isAdmin(m, sock))) {
-                // Si un usuario normal intenta usar este comando, solo le tiramos la X con el texto de error regular
-                return reply(fmt.aviso('Solo los administradores del grupo pueden usar este comando.'));
-            }
-
-            // Cambiar el estado en el documento del grupo de la DB
-            groupConfig.soloAdmins = !groupConfig.soloAdmins;
-            await groupConfig.save();
-
-            const estado = groupConfig.soloAdmins ? 'ACTIVADO 🔒 (Solo admins pueden usar el bot)' : 'DESACTIVADO 🔓 (Todos pueden usar el bot)';
-            return sock.sendMessage(remoteJid, { text: fmt.aviso(`Configuración actualizada:\nEl modo administración está *${estado}*.`) }, { quoted: m });
-        } catch (err) {
-            console.error('Error en comando !botmodoadmin:', err);
-            return reply(fmt.aviso('Ocurrió un error al cambiar la configuración del grupo.'));
-        }
-    }
-
-    // 2. Bloqueo global estricto: Si está activo y NO es admin, SOLO pone la X y detiene todo
+    // === BLOQUEO ESTRICTO DE MODO SOLO ADMINS (SILENCIOSO) ===
     if (groupConfig?.soloAdmins) {
+        const { isAdmin } = require('./utils');
         const usuarioEsAdmin = await isAdmin(m, sock);
-        if (!usuarioEsAdmin) {
+        
+        // Si el modo está encendido y el comando NO es '!botmodoadmin' ni el usuario es admin...
+        if (!usuarioEsAdmin && comandoEjecutar !== 'botmodoadmin') {
             try {
-                // Coloca únicamente la reacción de la cruz roja en el mensaje del usuario
+                // SOLO añade la reacción de la cruz roja en total silencio
                 return await sock.sendMessage(remoteJid, { react: { text: '❌', key: m.key } });
             } catch (err) {
                 console.error('Error enviando reacción de bloqueo:', err);
             }
-            return; // Frena por completo que el bot procese el comando o responda texto
+            return; // Detiene la ejecución por completo
         }
     }
-    // ======================================================
+    // ========================================================
 
     // 5. Ejecución segura del comando
     try {
