@@ -102,51 +102,55 @@ module.exports = {
         }
     },
 
-    // === COMANDO PERFIL (REPARADO Y REESCRITO) ===
+    // === COMANDO PERFIL (ESTÉTICA NUEVA) ===
     perfil: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
         try {
             const jidClean = sender.split('@')[0];
-            
-            // Verificamos si tiene personaje asignado en este grupo/comunidad
             const personaje = userGroup?.personaje || 'Sin personaje';
             const fandom = userGroup?.fandom || 'Ninguno';
             
-            let text = `👤 *PERFIL DE USUARIO*\n\n`;
-            text += `• *Usuario:* @${jidClean}\n`;
-            text += `• *Personaje:* ${personaje}\n`;
-            text += `• *Fandom:* (${fandom})\n`;
+            // Construimos usando la interfaz estética nativa de format.js
+            let text = fmt.infoHeader();
+            text += `\n                     𝄄 𓈒   ⁺ PERFIL DE USUARIO   𓏼\n`;
+            text += fmt.infoField('Usuario', `@${jidClean}`);
+            text += fmt.infoField('Personaje', `*${personaje}*`);
+            text += fmt.infoField('Fandom', `*(${fandom})*`);
             
-            // Si el modelo global de economía tiene saldo
             if (currentUser && typeof currentUser.saldo !== 'undefined') {
-                text += `• *Saldo:* ${currentUser.saldo} monedas\n`;
+                text += fmt.infoField('Saldo actual', `*${currentUser.saldo}* monedas`);
             }
+            
+            text += `\n\n       @ Lifeline : 𝓛and 𝓞f 𝓖ods`;
 
             await sock.sendMessage(m.key.remoteJid, { text, mentions: [sender] }, { quoted: m });
         } catch (err) {
             console.error('Error en !perfil:', err);
-            reply(fmt.aviso('Error al cargar tu perfil.'));
+            return reply(fmt.aviso('Error al intentar cargar la interfaz de tu perfil.'));
         }
     },
 
-    // === INTERRUPTOR: SOLO ADMINS ===
+    // === INTERRUPTOR: SOLO ADMINS (ESTÉTICA NUEVA) ===
     botmodoadmin: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
-            if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo admins pueden usar este comando.'));
+            const { isAdmin } = require('../utils');
+            if (!(await isAdmin(m, sock))) return reply(fmt.aviso('Solo los administradores del grupo pueden usar este comando.'));
             
-            const Group = require('../models/Group'); // Importamos tu modelo real
+            const Group = require('../models/Group');
             const groupConfig = await Group.findById(groupId);
             
-            if (!groupConfig) return reply(fmt.aviso('Error: No se encontró la configuración del grupo.'));
+            if (!groupConfig) return reply(fmt.aviso('No se pudo encontrar la configuración de este grupo.'));
 
-            // Cambiamos el estado (si está en true pasa a false, y viceversa)
             groupConfig.soloAdmins = !groupConfig.soloAdmins;
             await groupConfig.save();
 
-            const estado = groupConfig.soloAdmins ? 'ACTIVADO 🔒 (Solo admins pueden usar el bot)' : 'DESACTIVADO 🔓 (Todos pueden usar el bot)';
-            return sock.sendMessage(m.key.remoteJid, { text: fmt.aviso(`El modo administración ha sido *${estado}*.`) }, { quoted: m });
+            const estado = groupConfig.soloAdmins
+                ? 'ACTIVADO 🔒\n       𝄄   _Solo los administradores pueden usar el bot_'
+                : 'DESACTIVADO 🔓\n       𝄄   _Todos los miembros pueden usar el bot_';
+                
+            return reply(fmt.aviso(`Configuración modificada:\n       𝄄\n       𝄄➥ El modo administración está ${estado}`));
         } catch (err) {
             console.error('Error en !botmodoadmin:', err);
-            reply(fmt.aviso('Ocurrió un error al cambiar la configuración.'));
+            return reply(fmt.aviso('Ocurrió un error inesperado al intentar cambiar la configuración del grupo.'));
         }
     },
 
