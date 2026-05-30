@@ -86,7 +86,7 @@ module.exports = {
                 await personajeExiste.save();
             }
 
-            const tg = await UserGroup.getOrCreate(targetId, groupId, comunidadId);
+            const tg = await UserGroup.getOrCreate(targetId, groupId);
             tg.personaje = personaje;
             tg.fandom = fandom;
             await tg.save();
@@ -120,7 +120,7 @@ module.exports = {
                 text += fmt.infoField('Saldo actual', `*${currentUser.saldo}* monedas`);
             }
             
-            text += `\n\n       @ Lifeline : 𝓛and 𝓞f 𝓖ods`;
+            text += `\n\n       @ Atte : 𝓛and 𝓞f 𝓖ods`;
 
             await sock.sendMessage(m.key.remoteJid, { text, mentions: [sender] }, { quoted: m });
         } catch (err) {
@@ -159,6 +159,11 @@ module.exports = {
             const groupDoc = await Group.findById(groupId);
             const comunidadId = groupDoc?.comunidadId;
 
+            // Conseguimos los integrantes reales que están físicamente en el grupo de WhatsApp
+            const metadata = await sock.groupMetadata(groupId).catch(() => null);
+            if (!metadata) return reply(fmt.aviso('No se pudo obtener la lista de miembros del grupo.'));
+            const integrantesActivos = metadata.participants.map(p => p.id);
+
             let filter = { personaje: { $exists: true, $ne: "Sin personaje", $ne: "" } };
             if (comunidadId) {
                 filter.comunidadId = comunidadId;
@@ -166,12 +171,17 @@ module.exports = {
                 filter.groupId = groupId;
             }
 
+            // Buscamos los personajes de la base de datos
             const users = await UserGroup.find(filter).select('userId personaje fandom').lean();
-            if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
+            
+            // 🔥 FILTRO ANTIFANTASMAS: Solo se quedan los que sigan estando en el grupo de WhatsApp
+            const usersFiltrados = users.filter(u => integrantesActivos.includes(u.userId));
 
-            // Agrupación dinámica por Fandom
+            if (usersFiltrados.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
+
+            // Agrupación por Fandom
             const mapaFandoms = {};
-            users.forEach(u => {
+            usersFiltrados.forEach(u => {
                 const fandomNombre = u.fandom ? u.fandom.trim() : 'Otros';
                 if (!mapaFandoms[fandomNombre]) {
                     mapaFandoms[fandomNombre] = [];
@@ -180,18 +190,19 @@ module.exports = {
             });
 
             let text = fmt.header();
-            text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS\n');
+            text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS');
             const mentions = [];
 
-            // Construir la lista seccionada por Fandoms
             for (const [fandom, listaUsuarios] of Object.entries(mapaFandoms)) {
-                text += `\n🎭 *${fandom.toUpperCase()}*\n`;
+                text += `\n            𝄄 𓈒   ⁺ 🎭 ${fandom.toUpperCase()}   𓏼\n`;
                 listaUsuarios.forEach(u => {
                     const jidClean = u.userId.split('@')[0];
-                    text += fmt.listItem(`@${jidClean} - *${u.personaje}*\n`);
+                    text += fmt.listItem(`@${jidClean} - *${u.personaje}*`);
                     mentions.push(u.userId);
                 });
             }
+
+            text += `\n\n       @ Lifeline : 𝓛and 𝓞f 𝓖ods`;
 
             await sock.sendMessage(m.key.remoteJid, { text, mentions }, { quoted: m });
         } catch (err) {

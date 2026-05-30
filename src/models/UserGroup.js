@@ -33,32 +33,26 @@ const UserGroupSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: Date.now }
 });
 
-// Método para obtener o crear el UserGroup (global, con groupId/comunidadId)
-UserGroupSchema.statics.getOrCreate = async function(userId, groupId = null, comunidadId = null) {
-  let userGroup = await this.findById(userId);
+// Método para obtener o crear el UserGroup (aislado por groupId)
+UserGroupSchema.statics.getOrCreate = async function(userId, groupId) {
+  if (!groupId) {
+    throw new Error("Se requiere el groupId para obtener o crear un UserGroup aislado.");
+  }
+
+  // 1. Buscamos al usuario de forma única en ESTE grupo específico
+  let member = await this.findOne({ userId, groupId });
   
-  if (!userGroup) {
-    userGroup = new this({
-      _id: userId,
+  // 2. Si no existe, lo creamos vinculándolo estrictamente a este chat
+  if (!member) {
+    member = await this.create({
+      _id: `${userId}_${groupId}`, // Usamos un ID compuesto para aislar por grupo
       userId,
       groupId,
-      comunidadId
+      personaje: "Sin personaje",
+      fandom: ""
     });
-    await userGroup.save();
-  } else {
-    // Update groupId and comunidadId if needed
-    if (groupId && userGroup.groupId !== groupId) {
-      userGroup.groupId = groupId;
-    }
-    if (comunidadId && userGroup.comunidadId !== comunidadId) {
-      userGroup.comunidadId = comunidadId;
-    }
-    if (userGroup.isModified()) {
-      await userGroup.save();
-    }
   }
-  
-  return userGroup;
+  return member;
 };
 
 module.exports = mongoose.model('UserGroup', UserGroupSchema);

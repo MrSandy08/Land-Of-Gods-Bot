@@ -115,7 +115,21 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
 
     // 5. Ejecución segura del comando
     try {
-        const userGroup = await UserGroup.getOrCreate(sender);
+        // --- SOLUCIÓN EX-INTEGRANTES: Validar miembros actuales ---
+        const metadata = await sock.groupMetadata(groupId).catch(() => null);
+        if (!metadata) return; // Si no se puede leer el grupo, ignoramos
+
+        const participantesActuales = metadata.participants.map(p => p.id);
+
+        // Si el que ejecuta el comando ya no está en el grupo, no hacemos nada
+        if (!participantesActuales.includes(sender)) {
+            return;
+        }
+
+        // --- SOLUCIÓN CRUCE DE DATOS: Pasamos sender Y groupId para aislar el registro ---
+        const userGroup = await UserGroup.getOrCreate(sender, groupId);
+        
+        // Ejecutamos el comando pasando la instancia limpia y aislada
         await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, configParaComando, reply, sender, groupId, userGroup);
     } catch (criticalErr) {
         console.error(`Error crítico ejecutando !${comandoEjecutar}:`, criticalErr);
