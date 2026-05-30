@@ -86,7 +86,6 @@ module.exports = {
                 await personajeExiste.save();
             }
 
-            const comunidadId = groupDoc?.comunidadId || null;
             const tg = await UserGroup.getOrCreate(targetId, groupId, comunidadId);
             tg.personaje = personaje;
             tg.fandom = fandom;
