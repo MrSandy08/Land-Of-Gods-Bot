@@ -115,21 +115,29 @@ const handleCommand = async (sock, m, command, args, currentUser, globalConfig, 
 
     // 5. Ejecución segura del comando
     try {
-        // --- SOLUCIÓN EX-INTEGRANTES: Validar miembros actuales ---
+        // 1. FILTRO DE EX-INTEGRANTES: Validar miembros reales en tiempo real
         const metadata = await sock.groupMetadata(groupId).catch(() => null);
-        if (!metadata) return; // Si no se puede leer el grupo, ignoramos
+        if (!metadata) return; // Si el bot no puede leer el grupo, ignora el comando
 
         const participantesActuales = metadata.participants.map(p => p.id);
 
-        // Si el que ejecuta el comando ya no está en el grupo, no hacemos nada
+        // Si el usuario que ejecuta el comando ya no está físicamente en el grupo, se frena
         if (!participantesActuales.includes(sender)) {
             return;
         }
 
-        // --- SOLUCIÓN CRUCE DE DATOS: Pasamos sender Y groupId para aislar el registro ---
-        const userGroup = await UserGroup.getOrCreate(sender, groupId);
+        // 2. LOGICA DE COMUNIDADES PARA PERSONAJES (UserGroup)
+        // Revisamos si este grupo pertenece a una comunidad en tu modelo Group
+        const comunidadId = groupConfig?.comunidadId || null;
         
-        // Ejecutamos el comando pasando la instancia limpia y aislada
+        // Obtener o crear userGroup con soporte para comunidades
+        const userGroup = await UserGroup.getOrCreate(sender, groupId, comunidadId);
+
+        // 3. LA ECONOMÍA SE QUEDA GLOBAL (currentUser)
+        // 'currentUser' viene directo de buscar 'User.findById(sender)'.
+        // No le tocamos nada para que las monedas sirvan en cualquier grupo o comunidad por igual.
+
+        // Ejecutamos el comando pasando la combinación perfecta
         await allCommands[comandoEjecutar](sock, m, argsRestantes, currentUser, configParaComando, reply, sender, groupId, userGroup);
     } catch (criticalErr) {
         console.error(`Error crítico ejecutando !${comandoEjecutar}:`, criticalErr);
