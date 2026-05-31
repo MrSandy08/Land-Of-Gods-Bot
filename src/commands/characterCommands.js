@@ -170,26 +170,34 @@ module.exports = {
                 filter.groupId = groupId;
             }
 
-            // 2. Traer todos los personajes que cumplan el filtro directamente de la Base de Datos
-            const users = await UserGroup.find(filter).select('userId personaje fandom').lean();
-            
-            // Si no hay personajes registrados en la BD para esta comunidad, salimos
-            if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
+            // 2. Traer todos los personajes registrados directamente de la base de datos
+            const records = await UserGroup.find(filter).select('userId personaje fandom').lean();
+            if (records.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
 
-            // 3. Agrupación por Fandom (Case-Insensitive) para evitar duplicados como BNHA y bnha
+            // === PASO CLAVE: UNIFICACIÓN ABSOLUTA POR USUARIO ===
+            // Como un usuario puede tener múltiples entradas en la BD (una por cada grupo de la comunidad),
+            // filtramos para quedarnos únicamente con la entrada que de verdad posee el personaje asignado.
+            const usuariosUnicos = {};
+            records.forEach(r => {
+                const pValido = r.personaje ? r.personaje.trim() : '';
+                if (pValido === '' || pValido.toLowerCase() === 'sin personaje') return;
+
+                // Si el usuario no está registrado en el mapa, o si encontramos un registro con personaje más válido, lo guardamos
+                if (!usuariosUnicos[r.userId]) {
+                    usuariosUnicos[r.userId] = r;
+                }
+            });
+
+            // Convertimos el mapa de usuarios únicos de vuelta a una lista
+            const users = Object.values(usuariosUnicos);
+
+            // 3. Agrupación por Fandom (Case-Insensitive)
             const mapaFandoms = {};
             const mapeoNombresFandom = {};
 
             users.forEach(u => {
-                // Limpieza extra por si hay espacios accidentales
-                const personajeValido = u.personaje ? u.personaje.trim() : '';
                 const rawFandom = u.fandom ? u.fandom.trim() : 'Otros';
                 const fandomKey = rawFandom.toLowerCase();
-
-                // Ignorar registros residuales que tengan strings vacíos guardados
-                if (personajeValido === '' || personajeValido.toLowerCase() === 'sin personaje') {
-                    return;
-                }
 
                 if (!mapaFandoms[fandomKey]) {
                     mapaFandoms[fandomKey] = [];
@@ -198,7 +206,6 @@ module.exports = {
                 mapaFandoms[fandomKey].push(u);
             });
 
-            // Verificar si después de la limpieza estricta quedó algún personaje válido
             if (Object.keys(mapaFandoms).length === 0) {
                 return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
             }
