@@ -102,14 +102,12 @@ module.exports = {
         }
     },
 
-    // === COMANDO PERFIL (ESTÉTICA NUEVA) ===
     perfil: async (sock, m, args, currentUser, config, reply, sender, groupId, userGroup) => {
         try {
             const jidClean = sender.split('@')[0];
             const personaje = userGroup?.personaje || 'Sin personaje';
             const fandom = userGroup?.fandom || 'Ninguno';
             
-            // Construimos usando la interfaz estética nativa de format.js
             let text = fmt.infoHeader();
             text += `\n                     𝄄 𓈒   ⁺ PERFIL DE USUARIO   𓏼\n`;
             text += fmt.infoField('Usuario', `@${jidClean}`);
@@ -129,7 +127,6 @@ module.exports = {
         }
     },
 
-    // === INTERRUPTOR: SOLO ADMINS (ESTÉTICA NUEVA) ===
     botmodoadmin: async (sock, m, args, currentUser, config, reply, sender, groupId) => {
         try {
             const { isAdmin } = require('../utils');
@@ -159,67 +156,75 @@ module.exports = {
             const groupDoc = await Group.findById(groupId);
             const comunidadId = groupDoc?.comunidadId;
 
-            // 1. Obtenemos todos los grupos que pertenecen a la misma comunidad (si aplica)
-            let gruposComunidad = [];
+            // 1. Obtener TODOS los grupos que pertenecen a la misma comunidad (si aplica)
+            let participantesValidos = [];
             if (comunidadId) {
-                gruposComunidad = await Group.find({ comunidadId }).distinct('_id');
+                const gruposComunidad = await Group.find({ comunidadId: comunidadId }).select('_id').lean();
+                for (const g of gruposComunidad) {
+                    const metadata = await sock.groupMetadata(g._id).catch(() => null);
+                    if (metadata) {
+                        participantesValidos.push(...metadata.participants.map(p => p.id));
+                    }
+                }
             } else {
-                gruposComunidad = [groupId];
-            }
-
-            // 2. Obtenemos la lista de participantes de TODOS los grupos de la comunidad
-            let integrantesComunidad = new Set();
-            for (const gId of gruposComunidad) {
-                const gMetadata = await sock.groupMetadata(gId).catch(() => null);
-                if (gMetadata) {
-                    gMetadata.participants.forEach(p => integrantesComunidad.add(p.id));
+                const metadata = await sock.groupMetadata(groupId).catch(() => null);
+                if (metadata) {
+                    participantesValidos = metadata.participants.map(p => p.id);
                 }
             }
 
-            // 3. Filtro para personajes: ignorar "Sin personaje", "", y variaciones con espacios
-            const filterPersonaje = {
-                $exists: true,
-                $nin: ["Sin personaje", "", " ", "  "]
+            // Eliminar duplicados de la lista de participantes en tiempo real
+            participantesValidos = [...new Set(participantesValidos)];
+
+            if (participantesValidos.length === 0) {
+                return reply(fmt.aviso('No se pudo obtener la lista de miembros de la comunidad/grupo.'));
+            }
+
+            // 2. Filtro estricto en MongoDB para NO traer vacíos, nulos o "Sin personaje"
+            let filter = {
+                personaje: {
+                    $exists: true,
+                    $ne: null,
+                    $nin: ["", "Sin personaje", "sin personaje"]
+                }
             };
 
-            let filter = { personaje: filterPersonaje };
             if (comunidadId) {
                 filter.comunidadId = comunidadId;
             } else {
                 filter.groupId = groupId;
             }
 
-            // 4. Buscamos los personajes de la base de datos
             const users = await UserGroup.find(filter).select('userId personaje fandom').lean();
             
-            // 5. Filtro Antifantasmas: solo quienes están en ALGÚN grupo de la comunidad
-            const usersFiltrados = users.filter(u => integrantesComunidad.has(u.userId));
+            // Filtro antifantasmas expandido a nivel comunidad
+            const usersFiltrados = users.filter(u => participantesValidos.includes(u.userId));
 
             if (usersFiltrados.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
 
-            // 6. Agrupación por Fandom (insensible a mayúsculas/minúsculas)
+            // 3. Agrupación por Fandom e indexación insensible a mayúsculas (Case-Insensitive)
             const mapaFandoms = {};
+            const mapeoNombresFandom = {}; // Guarda la versión original escrita con el formato estético
+
             usersFiltrados.forEach(u => {
-                const fandomKey = (u.fandom || "Otros").trim().toLowerCase();
-                const fandomDisplay = u.fandom ? u.fandom.trim() : "Otros";
-                
+                const rawFandom = u.fandom ? u.fandom.trim() : 'Otros';
+                const fandomKey = rawFandom.toLowerCase(); // Key unificada (evita duplicación bnha/BNHA)
+
                 if (!mapaFandoms[fandomKey]) {
-                    mapaFandoms[fandomKey] = {
-                        display: fandomDisplay,
-                        members: []
-                    };
+                    mapaFandoms[fandomKey] = [];
+                    mapeoNombresFandom[fandomKey] = rawFandom; // Conservamos la primera variante estética encontrada
                 }
-                mapaFandoms[fandomKey].members.push(u);
+                mapaFandoms[fandomKey].push(u);
             });
 
             let text = fmt.header();
             text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS');
             const mentions = [];
 
-            // 7. Construimos la lista usando el nombre original del fandom
-            for (const [fandomKey, data] of Object.entries(mapaFandoms)) {
-                text += `\n            𝄄 𓈒   ⁺ 🎭 ${data.display.toUpperCase()}   𓏼\n`;
-                data.members.forEach(u => {
+            for (const [fandomKey, listaUsuarios] of Object.entries(mapaFandoms)) {
+                const nombreEstetico = mapeoNombresFandom[fandomKey].toUpperCase();
+                text += `\n            𝄄 𓈒   ⁺ 🎭 ${nombreEstetico}   𓏼\n`;
+                listaUsuarios.forEach(u => {
                     const jidClean = u.userId.split('@')[0];
                     text += fmt.listItem(`@${jidClean} - *${u.personaje}*`);
                     mentions.push(u.userId);
@@ -299,7 +304,8 @@ module.exports = {
                     { personaje: null },
                     { personaje: { $exists: false } },
                     { personaje: "" },
-                    { personaje: "Sin personaje" }
+                    { personaje: "Sin personaje" },
+                    { personaje: "sin personaje" }
                 ]
             };
 
