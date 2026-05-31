@@ -159,43 +159,67 @@ module.exports = {
             const groupDoc = await Group.findById(groupId);
             const comunidadId = groupDoc?.comunidadId;
 
-            // Conseguimos los integrantes reales que están físicamente en el grupo de WhatsApp
-            const metadata = await sock.groupMetadata(groupId).catch(() => null);
-            if (!metadata) return reply(fmt.aviso('No se pudo obtener la lista de miembros del grupo.'));
-            const integrantesActivos = metadata.participants.map(p => p.id);
+            // 1. Obtenemos todos los grupos que pertenecen a la misma comunidad (si aplica)
+            let gruposComunidad = [];
+            if (comunidadId) {
+                gruposComunidad = await Group.find({ comunidadId }).distinct('_id');
+            } else {
+                gruposComunidad = [groupId];
+            }
 
-            let filter = { personaje: { $exists: true, $ne: "Sin personaje", $ne: "" } };
+            // 2. Obtenemos la lista de participantes de TODOS los grupos de la comunidad
+            let integrantesComunidad = new Set();
+            for (const gId of gruposComunidad) {
+                const gMetadata = await sock.groupMetadata(gId).catch(() => null);
+                if (gMetadata) {
+                    gMetadata.participants.forEach(p => integrantesComunidad.add(p.id));
+                }
+            }
+
+            // 3. Filtro para personajes: ignorar "Sin personaje", "", y variaciones con espacios
+            const filterPersonaje = {
+                $exists: true,
+                $nin: ["Sin personaje", "", " ", "  "]
+            };
+
+            let filter = { personaje: filterPersonaje };
             if (comunidadId) {
                 filter.comunidadId = comunidadId;
             } else {
                 filter.groupId = groupId;
             }
 
-            // Buscamos los personajes de la base de datos
+            // 4. Buscamos los personajes de la base de datos
             const users = await UserGroup.find(filter).select('userId personaje fandom').lean();
             
-            // 🔥 FILTRO ANTIFANTASMAS: Solo se quedan los que sigan estando en el grupo de WhatsApp
-            const usersFiltrados = users.filter(u => integrantesActivos.includes(u.userId));
+            // 5. Filtro Antifantasmas: solo quienes están en ALGÚN grupo de la comunidad
+            const usersFiltrados = users.filter(u => integrantesComunidad.has(u.userId));
 
             if (usersFiltrados.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
 
-            // Agrupación por Fandom
+            // 6. Agrupación por Fandom (insensible a mayúsculas/minúsculas)
             const mapaFandoms = {};
             usersFiltrados.forEach(u => {
-                const fandomNombre = u.fandom ? u.fandom.trim() : 'Otros';
-                if (!mapaFandoms[fandomNombre]) {
-                    mapaFandoms[fandomNombre] = [];
+                const fandomKey = (u.fandom || "Otros").trim().toLowerCase();
+                const fandomDisplay = u.fandom ? u.fandom.trim() : "Otros";
+                
+                if (!mapaFandoms[fandomKey]) {
+                    mapaFandoms[fandomKey] = {
+                        display: fandomDisplay,
+                        members: []
+                    };
                 }
-                mapaFandoms[fandomNombre].push(u);
+                mapaFandoms[fandomKey].members.push(u);
             });
 
             let text = fmt.header();
             text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS');
             const mentions = [];
 
-            for (const [fandom, listaUsuarios] of Object.entries(mapaFandoms)) {
-                text += `\n            𝄄 𓈒   ⁺ 🎭 ${fandom.toUpperCase()}   𓏼\n`;
-                listaUsuarios.forEach(u => {
+            // 7. Construimos la lista usando el nombre original del fandom
+            for (const [fandomKey, data] of Object.entries(mapaFandoms)) {
+                text += `\n            𝄄 𓈒   ⁺ 🎭 ${data.display.toUpperCase()}   𓏼\n`;
+                data.members.forEach(u => {
                     const jidClean = u.userId.split('@')[0];
                     text += fmt.listItem(`@${jidClean} - *${u.personaje}*`);
                     mentions.push(u.userId);
