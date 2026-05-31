@@ -156,36 +156,11 @@ module.exports = {
             const groupDoc = await Group.findById(groupId);
             const comunidadId = groupDoc?.comunidadId;
 
-            // 1. Obtener TODOS los grupos que pertenecen a la misma comunidad (si aplica)
-            let participantesValidos = [];
-            if (comunidadId) {
-                const gruposComunidad = await Group.find({ comunidadId: comunidadId }).select('_id').lean();
-                for (const g of gruposComunidad) {
-                    const metadata = await sock.groupMetadata(g._id).catch(() => null);
-                    if (metadata) {
-                        participantesValidos.push(...metadata.participants.map(p => p.id));
-                    }
-                }
-            } else {
-                const metadata = await sock.groupMetadata(groupId).catch(() => null);
-                if (metadata) {
-                    participantesValidos = metadata.participants.map(p => p.id);
-                }
-            }
-
-            // Eliminar duplicados de la lista de participantes en tiempo real
-            participantesValidos = [...new Set(participantesValidos)];
-
-            if (participantesValidos.length === 0) {
-                return reply(fmt.aviso('No se pudo obtener la lista de miembros de la comunidad/grupo.'));
-            }
-
-            // 2. Filtro estricto en MongoDB para NO traer vacíos, nulos o "Sin personaje"
+            // 1. Crear el filtro de MongoDB basándonos estrictamente en la Comunidad o Grupo
             let filter = {
                 personaje: {
                     $exists: true,
-                    $ne: null,
-                    $nin: ["", "Sin personaje", "sin personaje"]
+                    $nin: [null, "", "Sin personaje", "sin personaje"]
                 }
             };
 
@@ -195,28 +170,40 @@ module.exports = {
                 filter.groupId = groupId;
             }
 
+            // 2. Traer todos los personajes que cumplan el filtro directamente de la Base de Datos
             const users = await UserGroup.find(filter).select('userId personaje fandom').lean();
             
-            // Filtro antifantasmas expandido a nivel comunidad
-            const usersFiltrados = users.filter(u => participantesValidos.includes(u.userId));
+            // Si no hay personajes registrados en la BD para esta comunidad, salimos
+            if (users.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
 
-            if (usersFiltrados.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
-
-            // 3. Agrupación por Fandom e indexación insensible a mayúsculas (Case-Insensitive)
+            // 3. Agrupación por Fandom (Case-Insensitive) para evitar duplicados como BNHA y bnha
             const mapaFandoms = {};
-            const mapeoNombresFandom = {}; // Guarda la versión original escrita con el formato estético
+            const mapeoNombresFandom = {};
 
-            usersFiltrados.forEach(u => {
+            users.forEach(u => {
+                // Limpieza extra por si hay espacios accidentales
+                const personajeValido = u.personaje ? u.personaje.trim() : '';
                 const rawFandom = u.fandom ? u.fandom.trim() : 'Otros';
-                const fandomKey = rawFandom.toLowerCase(); // Key unificada (evita duplicación bnha/BNHA)
+                const fandomKey = rawFandom.toLowerCase();
+
+                // Ignorar registros residuales que tengan strings vacíos guardados
+                if (personajeValido === '' || personajeValido.toLowerCase() === 'sin personaje') {
+                    return;
+                }
 
                 if (!mapaFandoms[fandomKey]) {
                     mapaFandoms[fandomKey] = [];
-                    mapeoNombresFandom[fandomKey] = rawFandom; // Conservamos la primera variante estética encontrada
+                    mapeoNombresFandom[fandomKey] = rawFandom;
                 }
                 mapaFandoms[fandomKey].push(u);
             });
 
+            // Verificar si después de la limpieza estricta quedó algún personaje válido
+            if (Object.keys(mapaFandoms).length === 0) {
+                return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
+            }
+
+            // 4. Construcción de la lista estética final
             let text = fmt.header();
             text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS');
             const mentions = [];
@@ -224,9 +211,10 @@ module.exports = {
             for (const [fandomKey, listaUsuarios] of Object.entries(mapaFandoms)) {
                 const nombreEstetico = mapeoNombresFandom[fandomKey].toUpperCase();
                 text += `\n            𝄄 𓈒   ⁺ 🎭 ${nombreEstetico}   𓏼\n`;
+                
                 listaUsuarios.forEach(u => {
                     const jidClean = u.userId.split('@')[0];
-                    text += fmt.listItem(`@${jidClean} - *${u.personaje}*`);
+                    text += fmt.listItem(`@${jidClean} - *${u.personaje.trim()}*`);
                     mentions.push(u.userId);
                 });
             }
