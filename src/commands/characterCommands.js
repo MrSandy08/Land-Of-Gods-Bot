@@ -73,6 +73,7 @@ module.exports = {
             const personajeLimpio = normalizarTexto(personaje);
             const regexBusqueda = new RegExp(personajeLimpio.split('').join('[^a-zA-Z0-9]*'), 'i');
 
+            // Liberar el personaje si ya lo tenía otra persona en la comunidad
             const personajeExiste = await UserGroup.findOne({
                 ...filter,
                 userId: { $ne: targetId },
@@ -156,7 +157,7 @@ module.exports = {
             const groupDoc = await Group.findById(groupId);
             const comunidadId = groupDoc?.comunidadId;
 
-            // 1. Crear el filtro de MongoDB basándonos estrictamente en la Comunidad o Grupo
+            // 1. Filtro base de MongoDB buscando por Comunidad o por Grupo independiente
             let filter = {
                 personaje: {
                     $exists: true,
@@ -170,28 +171,32 @@ module.exports = {
                 filter.groupId = groupId;
             }
 
-            // 2. Traer todos los personajes registrados directamente de la base de datos
+            // 2. Traer todos los documentos que tengan personajes válidos asignados
             const records = await UserGroup.find(filter).select('userId personaje fandom').lean();
             if (records.length === 0) return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
 
-            // === PASO CLAVE: UNIFICACIÓN ABSOLUTA POR USUARIO ===
-            // Como un usuario puede tener múltiples entradas en la BD (una por cada grupo de la comunidad),
-            // filtramos para quedarnos únicamente con la entrada que de verdad posee el personaje asignado.
+            // === PASO CLAVE REVISADO: UNIFICACIÓN INTELIGENTE A NIVEL COMUNIDAD ===
+            // Recorremos los registros duplicados de la comunidad y priorizamos siempre el que tenga un personaje asignado real.
             const usuariosUnicos = {};
             records.forEach(r => {
                 const pValido = r.personaje ? r.personaje.trim() : '';
                 if (pValido === '' || pValido.toLowerCase() === 'sin personaje') return;
 
-                // Si el usuario no está registrado en el mapa, o si encontramos un registro con personaje más válido, lo guardamos
+                // Si no existía el usuario en el mapa, o si el guardado actual estaba vacío, lo sobrescribimos con el real
                 if (!usuariosUnicos[r.userId]) {
                     usuariosUnicos[r.userId] = r;
+                } else {
+                    const pExistente = usuariosUnicos[r.userId].personaje ? usuariosUnicos[r.userId].personaje.trim().toLowerCase() : '';
+                    if (pExistente === '' || pExistente === 'sin personaje') {
+                        usuariosUnicos[r.userId] = r;
+                    }
                 }
             });
 
-            // Convertimos el mapa de usuarios únicos de vuelta a una lista
+            // Convertir el mapa unificado a array
             const users = Object.values(usuariosUnicos);
 
-            // 3. Agrupación por Fandom (Case-Insensitive)
+            // 3. Agrupación por Fandom (Evitando duplicación Case-Sensitive)
             const mapaFandoms = {};
             const mapeoNombresFandom = {};
 
@@ -210,7 +215,7 @@ module.exports = {
                 return reply(fmt.aviso('No hay personajes asignados en este grupo/comunidad.'));
             }
 
-            // 4. Construcción de la lista estética final
+            // 4. Renderizado estético de la lista de la comunidad
             let text = fmt.header();
             text += fmt.listSection('LISTA DE PERSONAJES OCUPADOS');
             const mentions = [];
